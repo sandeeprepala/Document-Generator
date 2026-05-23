@@ -38,13 +38,16 @@ app.post("/github/webhook", async (req, res) => {
         if (isMainOrMaster) {
             console.log("Main/master push — triggering doc generation...");
 
-            const repoUrl = payload.repository.clone_url;
             const repoFullName = payload.repository.full_name; // "owner/repo"
+            const commits = payload.commits; // Array of commit objects
 
             // Fire-and-forget so webhook responds instantly
-            triggerDocGeneration({ repoUrl, repoFullName, octokit }).catch(
-                (err) => console.error("Doc generation error:", err)
-            );
+            triggerDocGeneration({
+                repoFullName,
+                octokit,
+                eventType: "push",
+                commits,
+            }).catch((err) => console.error("Doc generation error:", err));
         } else {
             console.log("Not main/master — skipping doc generation.");
         }
@@ -63,12 +66,15 @@ app.post("/github/webhook", async (req, res) => {
         if (action === "closed" && payload.pull_request.merged) {
             console.log("PR Merged — triggering doc generation...");
 
-            const repoUrl = payload.repository.clone_url;
             const repoFullName = payload.repository.full_name;
+            const prNumber = payload.pull_request.number;
 
-            triggerDocGeneration({ repoUrl, repoFullName, octokit }).catch(
-                (err) => console.error("Doc generation error:", err)
-            );
+            triggerDocGeneration({
+                repoFullName,
+                octokit,
+                eventType: "pull_request",
+                prNumber,
+            }).catch((err) => console.error("Doc generation error:", err));
         }
     }
 

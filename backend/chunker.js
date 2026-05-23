@@ -1,13 +1,18 @@
-import fs from "fs";
-
-export function chunkFile(filePath, chunkSize = 1000) {
-    const content = fs.readFileSync(filePath, "utf-8");
+/**
+ * Chunks raw text content into smaller pieces.
+ *
+ * @param {string} text - The raw text content to chunk
+ * @param {string} fileName - The name/path of the file this text came from
+ * @param {number} chunkSize - Size of each chunk in characters
+ * @returns {Array} Array of {file, text} objects
+ */
+export function chunkFile(text, fileName, chunkSize = 1000) {
     const chunks = [];
 
-    for (let i = 0; i < content.length; i += chunkSize) {
+    for (let i = 0; i < text.length; i += chunkSize) {
         chunks.push({
-            file: filePath,
-            text: content.slice(i, i + chunkSize),
+            file: fileName,
+            text: text.slice(i, i + chunkSize),
         });
     }
 
