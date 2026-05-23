@@ -1,7 +1,7 @@
 import "dotenv/config";
 import fs from "fs";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-//comment2
+//comment3
 const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 const genAI = new GoogleGenerativeAI(apiKey);
 
@@ -58,8 +58,8 @@ ${context}
     const documentation = result.response.text();
 
     // Save locally as well (optional local copy)
-    fs.writeFileSync("DOCUMENTATION.md", documentation);
-    console.log("[DocGen] DOCUMENTATION.md saved locally ✓");
+    fs.writeFileSync("README.md", documentation);
+    console.log("[DocGen] README.md saved locally ✓");
 
     return documentation;
 }

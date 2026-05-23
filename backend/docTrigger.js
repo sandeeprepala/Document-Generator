@@ -1,10 +1,10 @@
 import { chunkFile } from "./chunker.js";
 import { generateEmbedding } from "./embedding.js";
 import { generateDocumentation } from "./gemini.js";
-//comment2
+//comment3
 // File extensions to process
 const SUPPORTED_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx"];
-const DOCS_FILE = "DOCUMENTATION.md";
+const DOCS_FILE = "Readme.md";
 
 /**
  * Extracts changed file paths from push webhook payload.
@@ -183,7 +183,7 @@ export async function triggerDocGeneration({
         const docs = await generateDocumentation(combinedContext);
         console.log("[DocGen] Documentation generated successfully");
 
-        // ── STEP 5: Push DOCUMENTATION.md back to the repo ──────────────────
+        // ── STEP 5: Push README.md back to the repo ────────────────────────
         await pushDocsToRepo({ repoFullName, octokit, docs });
 
         console.log("[DocGen] Done ✓");
@@ -194,7 +194,7 @@ export async function triggerDocGeneration({
 }
 
 /**
- * Commits and pushes DOCUMENTATION.md to the default branch of the repo.
+ * Commits and pushes README.md to the default branch of the repo.
  *
  * @param {object} params
  * @param {string} params.repoFullName - "owner/repo" string
@@ -203,12 +203,12 @@ export async function triggerDocGeneration({
  */
 async function pushDocsToRepo({ repoFullName, octokit, docs }) {
     const [owner, repo] = repoFullName.split("/");
-    const filePath = "DOCUMENTATION.md";
+    const filePath = "README.md";
     const content = Buffer.from(docs).toString("base64");
 
     console.log(`[DocGen] Pushing ${filePath} to ${repoFullName}...`);
 
-    // Check if DOCUMENTATION.md already exists (need its SHA to update it)
+    // Check if README.md already exists (need its SHA to update it)
     let existingSha = null;
     try {
         const { data } = await octokit.repos.getContent({
@@ -217,10 +217,10 @@ async function pushDocsToRepo({ repoFullName, octokit, docs }) {
             path: filePath,
         });
         existingSha = data.sha;
-        console.log("[DocGen] Existing DOCUMENTATION.md found — will update.");
+        console.log("[DocGen] Existing README.md found — will update.");
     } catch (err) {
         if (err.status === 404) {
-            console.log("[DocGen] No existing DOCUMENTATION.md — will create.");
+            console.log("[DocGen] No existing README.md — will create.");
         } else {
             throw err;
         }
@@ -231,10 +231,10 @@ async function pushDocsToRepo({ repoFullName, octokit, docs }) {
         owner,
         repo,
         path: filePath,
-        message: "docs: auto-update DOCUMENTATION.md [skip ci]",
+        message: "docs: auto-update README.md [skip ci]",
         content,
         ...(existingSha ? { sha: existingSha } : {}),
     });
 
-    console.log("[DocGen] DOCUMENTATION.md pushed successfully ✓");
+    console.log("[DocGen] README.md pushed successfully ✓");
 }
