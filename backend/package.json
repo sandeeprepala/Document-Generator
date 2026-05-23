@@ -21,6 +21,7 @@
     "express": "^5.2.1",
     "nodemon": "^3.1.14",
     "octokit": "^5.0.5",
+    "mongodb": "^5.7.0",
     "simple-git": "^3.36.0"
   }
 }

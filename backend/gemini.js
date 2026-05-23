@@ -1,7 +1,7 @@
 import "dotenv/config";
 import fs from "fs";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-//comment3
+//comment4
 const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 const genAI = new GoogleGenerativeAI(apiKey);
 

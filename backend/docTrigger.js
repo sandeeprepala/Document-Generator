@@ -1,7 +1,7 @@
 import { chunkFile } from "./chunker.js";
 import { generateEmbedding } from "./embedding.js";
 import { generateDocumentation } from "./gemini.js";
-//comment3
+//comment4
 // File extensions to process
 const SUPPORTED_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx"];
 const DOCS_FILE = "Readme.md";
@@ -107,9 +107,47 @@ function isSupportedFile(filePath) {
  * @param {Array} params.commits        - Commit array (for push events)
  * @param {number} params.prNumber      - PR number (for PR events)
  */
+/**
+ * Attempts to extract simple metadata from code chunks.
+ * Currently supports JavaScript/TypeScript function name detection.
+ */
+function extractMetadata(filePath, text) {
+    const metadata = {
+        language: null,
+        type: null,
+        functionName: null,
+    };
+
+    // language from extension
+    if (filePath.endsWith(".js") || filePath.endsWith(".jsx")) {
+        metadata.language = "javascript";
+    } else if (filePath.endsWith(".ts") || filePath.endsWith(".tsx")) {
+        metadata.language = "typescript";
+    }
+
+    // detect simple function declarations
+    const fnDecl = text.match(/function\s+([A-Za-z0-9_$]+)\s*\(/);
+    if (fnDecl) {
+        metadata.type = "function";
+        metadata.functionName = fnDecl[1];
+        return metadata;
+    }
+
+    // arrow or const assignment: const name = async (...) => or const name = (...) =>
+    const arrowDecl = text.match(/(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?\(?/);
+    if (arrowDecl) {
+        metadata.type = "function";
+        metadata.functionName = arrowDecl[1];
+        return metadata;
+    }
+
+    return metadata;
+}
+
 export async function triggerDocGeneration({
     repoFullName,
     octokit,
+    db,
     eventType,
     commits,
     prNumber,
@@ -153,8 +191,38 @@ export async function triggerDocGeneration({
                 );
                 const chunks = chunkFile(content, item.file);
 
-                for (const chunk of chunks) {
+                for (let i = 0; i < chunks.length; i++) {
+                    const chunk = chunks[i];
                     const embedding = await generateEmbedding(chunk.text);
+
+                    // create deterministic chunkId
+                    const safeFile = item.file.replace(/[^a-z0-9]/gi, "-");
+                    const chunkId = `${safeFile}-${i}`;
+
+                    const metadata = extractMetadata(item.file, chunk.text);
+
+                    // store chunk in MongoDB if available
+                    if (db) {
+                        try {
+                            await db.collection("chunks").updateOne(
+                                { chunkId },
+                                {
+                                    $set: {
+                                        repo: repo,
+                                        file: item.file,
+                                        chunkId,
+                                        text: chunk.text,
+                                        embedding,
+                                        metadata,
+                                    },
+                                },
+                                { upsert: true }
+                            );
+                        } catch (dbErr) {
+                            console.error(`[DocGen] Failed to upsert chunk ${chunkId}:`, dbErr.message);
+                        }
+                    }
+
                     allChunks.push({
                         file: chunk.file,
                         text: chunk.text,
