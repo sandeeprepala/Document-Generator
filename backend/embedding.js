@@ -1,7 +1,7 @@
 import { pipeline } from "@xenova/transformers";
 
 let extractor;
-//comment1
+//comment2
 export async function loadModel() {
     if (!extractor) {
         extractor = await pipeline(
