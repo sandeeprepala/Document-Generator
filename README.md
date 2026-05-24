@@ -146,37 +146,39 @@ Instead of regenerating the entire README, only the section between:
 
 ```md
 <!-- AUTO-GENERATED DOCS START -->
-```markdown
-## Frontend API & Configuration Updates
+### Documentation Generation & Vector Database Enhancements
 
-The frontend application's API communication and configuration have been updated to enhance maintainability and support flexible environment deployment.
+This update significantly enhances the project's automated documentation generation pipeline and its integration with the Qdrant vector database. The primary goals are to provide more intelligent, incremental, and robust documentation updates, alongside improved data management for code knowledge.
 
-### API Configuration
+#### Key Changes:
 
-*   **Centralized Endpoints:** All backend API endpoints are now defined in `frontend/src/config.js`. This centralizes API paths, making them easier to manage and update.
-*   **Environment Variable Support:** The base URL for API calls (`API_BASE_URL`) is now dynamically determined using Vite environment variables (`import.meta.env.VITE_API_URL`), falling back to `http://localhost:5000` for local development if not specified.
-
-### Frontend API Interactions
-
-The `App.jsx` component has been updated to utilize these centralized API endpoints for core features:
-
-*   **`/api/status`**: Used on initial load to check the backend's status, including Qdrant connectivity.
-*   **`/api/ingest`**: Triggers the ingestion of documents into the vector store.
-*   **`/api/chunks`**: Retrieves a list of ingested document chunks. The application now specifically requests a limit of 10 chunks for display.
-*   **`/api/chat`**: Sends user queries to the RAG pipeline and receives AI-generated answers.
-
-These changes streamline API endpoint management and make the application more robust for different deployment scenarios.
-```
+*   **Intelligent README Update Mechanism:**
+    *   The system now performs **incremental updates** to the `README.md` by identifying specific `<!-- AUTO-GENERATED DOCS START -->` and `<!-- AUTO-GENERATED DOCS END -->` markers. If these markers are present, only the content between them is updated.
+    *   If no `README.md` or markers are found, the system can now gracefully create a new README or append the generated documentation.
+    *   Auto-generated README updates now include `[skip ci]` in the commit message to prevent infinite CI loops.
+*   **Contextual Change Summaries:**
+    *   A new feature appends a concise summary of all files that were added, modified, or removed in a commit or pull request directly to the generated documentation, providing immediate context for the changes.
+*   **Enhanced Vector Database (Qdrant) Management:**
+    *   **Robust Chunk Deletion:** Improved logic for deleting stale chunks in Qdrant. The system now accurately identifies and removes all associated vector chunks for removed or updated files using a scroll-based approach, ensuring data consistency and preventing orphaned data. This includes a fallback for individual chunk deletion if batch operations fail.
+    *   **Pre-Ingestion Cleanup:** When new files are ingested or existing ones are updated, the system now explicitly deletes their old chunks from Qdrant before adding new ones, guaranteeing data freshness.
+    *   **Enriched Chunk Metadata:** Chunks stored in Qdrant now include additional metadata such as detected programming language, potential function names (for JavaScript/TypeScript files), `chunkIndex`, and `fileExtension`. This enrichment allows for more precise semantic search and retrieval.
+    *   **Consistent Chunk IDs:** New utilities (`toUUID`, `hashChunkId`) have been introduced to generate unique and consistent IDs for code chunks, improving data integrity and management within Qdrant.
+*   **Expanded File Type Support:**
+    *   The range of supported file extensions for code ingestion and documentation generation has been broadened to include common documentation and configuration files like `.md`, `.txt`, `.json`, `.html`, and `.css`.
+*   **Gemini Model Update and Prompt Refinement:**
+    *   The `gemini-2.5-flash` model is now utilized for both documentation and question-answering tasks, potentially offering improved performance and response quality.
+    *   Documentation generation prompts have been refined to emphasize conciseness, clean markdown output, and strict adherence to rules against regenerating full READMEs or extensive tables.
+*   **Pipeline Resilience:**
+    *   Explicit checks have been added to prevent the documentation pipeline from attempting to process `README.md` itself as a source file, avoiding potential infinite loops during documentation generation.
 
 ## Change Summary
 The following files were changed or updated in the codebase:
-- backend/.env.example (added)
-- frontend/.env (added)
-- frontend/src/config.js (added)
-- backend/package.json (modified)
-- frontend/package.json (modified)
-- frontend/src/App.css (modified)
-- frontend/src/App.jsx (modified)
+- backend/chunker.js (modified)
+- backend/docTrigger.js (modified)
+- backend/embedding.js (modified)
+- backend/gemini.js (modified)
+- backend/rag.js (modified)
+- backend/repoReader.js (modified)
 <!-- AUTO-GENERATED DOCS END -->`) to identify and replace only the auto-generated section of the `README.md`.
     *   This ensures that any custom content outside these markers is preserved, allowing users to maintain additional, manually written information in their `README.md` files without it being overwritten by the automated generation process.
     *   If markers are not found, the generated documentation is appended, and if `README.md` doesn't exist, a new one is created with a default heading.
