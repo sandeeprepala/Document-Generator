@@ -6,7 +6,11 @@ import { ensureQdrantCollection, deleteChunksForFile } from "./rag.js";
 //comment71241
 // File extensions to process
 const SUPPORTED_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx"];
-const DOCS_FILE = "Readme.md";
+const DOCS_FILE = "README.md";
+
+function isDocsFile(filePath) {
+  return /^README\.md$/i.test(filePath);
+}
 
 /**
  * Convert an arbitrary string ID to UUID format (8-4-4-4-12)
@@ -189,6 +193,21 @@ export async function triggerDocGeneration({
     const filesToProcess = changedFiles.filter(
       (item) => isSupportedFile(item.file) && item.status !== "removed"
     );
+
+    if (changedFiles.length === 0) {
+      console.log("[DocGen] No changed files found in webhook payload; skipping documentation generation.");
+      return;
+    }
+
+    if (filesToProcess.length === 0 && deletions.length === 0) {
+      const docsOnly = changedFiles.every((item) => isDocsFile(item.file));
+      if (docsOnly) {
+        console.log("[DocGen] README-only push detected; skipping documentation generation to avoid loop.");
+      } else {
+        console.log("[DocGen] No supported source files changed; skipping documentation generation.");
+      }
+      return;
+    }
 
     // ── STEP 2: Delete chunks for removed files ─────────────────────────────
     if (db) {
