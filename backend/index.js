@@ -1,28 +1,40 @@
 import "dotenv/config";
 import express from "express";
+import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
 import { Octokit } from "@octokit/rest";
+import { QdrantClient } from "@qdrant/js-client-rest";
 import { triggerDocGeneration } from "./docTrigger.js";
-import { MongoClient } from "mongodb";
+import { ingestDirectory, searchChunks, listChunks } from "./rag.js";
+import { generateAnswer } from "./gemini.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const workspaceRoot = path.resolve(__dirname, "../");
 
 const app = express();
 //comment5
+app.use(cors());
 app.use(express.json());
 
 const octokit = new Octokit({
     auth: process.env.GITHUB_TOKEN,
 });
 
-let db = null;
+let qdrant = null;
 
 async function start() {
-    // Connect to MongoDB if MONGO_URI is provided
-    if (process.env.MONGO_URI) {
-        const mongoClient = new MongoClient(process.env.MONGO_URI);
-        await mongoClient.connect();
-        db = mongoClient.db(process.env.MONGO_DB_NAME || "docgen");
-        console.log("Connected to MongoDB");
+    const qdrantUrl = process.env.QDRANT_URL || process.env.Cluster_endpoint;
+    const qdrantApiKey = process.env.QDRANT_API_KEY || process.env.Qdrant_key;
+    const qdrantCollectionName = process.env.QDRANT_COLLECTION || "chunks";
+
+    if (qdrantUrl && qdrantApiKey) {
+        const qdrantClient = new QdrantClient({ url: qdrantUrl, apiKey: qdrantApiKey });
+        qdrant = { client: qdrantClient, collectionName: qdrantCollectionName };
+        console.log("Connected to Qdrant");
     } else {
-        console.log("MONGO_URI not set — skipping MongoDB connection");
+        console.log("QDRANT_URL/QDRANT_API_KEY not set — skipping Qdrant connection");
     }
 
     app.get("/", (req, res) => {
@@ -59,7 +71,7 @@ async function start() {
                 triggerDocGeneration({
                     repoFullName,
                     octokit,
-                    db,
+                    db: qdrant,
                     eventType: "push",
                     commits,
                 }).catch((err) => console.error("Doc generation error:", err));
@@ -87,7 +99,7 @@ async function start() {
                 triggerDocGeneration({
                     repoFullName,
                     octokit,
-                    db,
+                    db: qdrant,
                     eventType: "pull_request",
                     prNumber,
                 }).catch((err) => console.error("Doc generation error:", err));
@@ -95,6 +107,74 @@ async function start() {
         }
 
         res.sendStatus(200);
+    });
+
+    app.get("/api/status", (req, res) => {
+        res.json({
+            status: "ok",
+            qdrant: !!qdrant,
+        });
+    });
+
+    app.post("/api/ingest", async (req, res) => {
+        try {
+            if (!qdrant) {
+                return res.status(500).json({ error: "Qdrant is not configured." });
+            }
+            const rootDir = req.body.rootDir || workspaceRoot;
+            const result = await ingestDirectory({ db: qdrant, sourceRoot: rootDir, chunkSize: 800 });
+            res.json(result);
+        } catch (error) {
+            console.error("Ingestion error:", error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    app.post("/api/chat", async (req, res) => {
+        try {
+            const { question } = req.body;
+            if (!question || typeof question !== "string") {
+                return res.status(400).json({ error: "Question is required." });
+            }
+            if (!qdrant) {
+                return res.status(500).json({ error: "Qdrant is not configured." });
+            }
+
+                let chunks = await searchChunks({ db: qdrant, query: question, topK: 6 });
+
+            if (chunks.length === 0) {
+                console.log("No chunks found for query — running ingestion before retrying.");
+                await ingestDirectory({ db: qdrant, sourceRoot: workspaceRoot, chunkSize: 800 });
+                    chunks = await searchChunks({ db: qdrant, query: question, topK: 6 });
+            }
+
+            if (chunks.length === 0) {
+                return res.status(400).json({
+                    error:
+                        "No document chunks are available. Please ingest files first using the ingest button or POST /api/ingest.",
+                });
+            }
+
+            const answer = await generateAnswer(question, chunks);
+            res.json({ answer, chunks });
+        } catch (error) {
+            console.error("Chat error:", error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    app.get("/api/chunks", async (req, res) => {
+        try {
+            if (!qdrant) {
+                return res.status(500).json({ error: "Qdrant is not configured." });
+            }
+            const limit = Number(req.query.limit) || 20;
+            const chunks = await listChunks({ db: qdrant, limit });
+            res.json({ chunks });
+        } catch (error) {
+            console.error("Chunks listing error:", error);
+            res.status(500).json({ error: error.message });
+        }
     });
 
     const port = process.env.PORT || 5000;

@@ -33,7 +33,12 @@ export function getAllFiles(dirPath, arrayOfFiles = []) {
                 file.endsWith(".js") ||
                 file.endsWith(".jsx") ||
                 file.endsWith(".ts") ||
-                file.endsWith(".tsx")
+                file.endsWith(".tsx") ||
+                file.endsWith(".md") ||
+                file.endsWith(".txt") ||
+                file.endsWith(".json") ||
+                file.endsWith(".html") ||
+                file.endsWith(".css")
             ) {
                 arrayOfFiles.push(fullPath);
             }

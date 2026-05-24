@@ -7,15 +7,19 @@
  * @returns {Array} Array of {file, text} objects
  */
 //comment5
-export function chunkFile(text, fileName, chunkSize = 1000) {
-    const chunks = [];
+export function chunkFile(text = "", fileName, chunkSize = 1000) {
+  const chunks = [];
+  const normalizedText = String(text);
 
-    for (let i = 0; i < text.length; i += chunkSize) {
-        chunks.push({
-            file: fileName,
-            text: text.slice(i, i + chunkSize),
-        });
-    }
+  for (let i = 0; i < normalizedText.length; i += chunkSize) {
+    const chunkText = normalizedText.slice(i, i + chunkSize).trim();
+    if (chunkText.length === 0) continue;
 
-    return chunks;
+    chunks.push({
+      file: fileName,
+      text: chunkText,
+    });
+  }
+
+  return chunks;
 }

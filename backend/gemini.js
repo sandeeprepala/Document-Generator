@@ -1,18 +1,17 @@
 import "dotenv/config";
 import fs from "fs";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-//comment5
+
 const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 const genAI = new GoogleGenerativeAI(apiKey);
 
 export async function generateDocumentation(context) {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    const prompt = `
+  const prompt = `
 You are a senior software engineer.
 
-Analyze this repository and generate concise
-developer documentation.
+Analyze this repository and generate concise developer documentation.
 
 IMPORTANT RULES:
 - Keep documentation concise
@@ -54,12 +53,52 @@ CODEBASE:
 ${context}
 `;
 
-    const result = await model.generateContent(prompt);
-    const documentation = result.response.text();
+  const result = await model.generateContent(prompt);
+  const documentation = result.response.text();
 
-    // Save locally as well (optional local copy)
-    fs.writeFileSync("README.md", documentation);
-    console.log("[DocGen] README.md saved locally ✓");
+  fs.writeFileSync("README.md", documentation);
+  console.log("[DocGen] README.md saved locally ✓");
 
-    return documentation;
+  return documentation;
+}
+
+export async function generateAnswer(question, chunks) {
+  if (!chunks || chunks.length === 0) {
+    throw new Error("No ingested document chunks available. Please ingest files first.");
+  }
+
+  const validChunks = chunks.filter(
+    (chunk) =>
+      chunk &&
+      typeof chunk.filePath === "string" &&
+      typeof chunk.text === "string" &&
+      chunk.text.trim().length > 0
+  );
+
+  if (validChunks.length === 0) {
+    throw new Error("No valid document chunks available. Please ingest files first.");
+  }
+
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+  const chunkContext = validChunks
+    .map((chunk, index) => `Source ${index + 1}: ${chunk.filePath}\n${chunk.text}`)
+    .join("\n\n---\n\n");
+
+  console.log(`[Gemini] Sending ${validChunks.length} chunks as context to Gemini.`);
+
+  const prompt = `You are an expert assistant that answers developer questions using the provided document content.
+Use only the provided information from the document chunks. If the answer cannot be found in the provided content, say that you do not have enough information.
+Do not use bold text. Give response in plain points.
+
+DOCUMENT CHUNKS:
+${chunkContext}
+
+USER QUESTION:
+${question}
+
+Provide a concise answer and reference the source chunks when helpful.`;
+
+  const result = await model.generateContent(prompt);
+  return result.response.text();
 }

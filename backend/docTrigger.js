@@ -1,6 +1,7 @@
 import { chunkFile } from "./chunker.js";
 import { generateEmbedding } from "./embedding.js";
 import { generateDocumentation } from "./gemini.js";
+import { ensureQdrantCollection } from "./rag.js";
 //comment5
 // File extensions to process
 const SUPPORTED_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx"];
@@ -204,20 +205,23 @@ export async function triggerDocGeneration({
                     // store chunk in MongoDB if available
                     if (db) {
                         try {
-                            await db.collection("chunks").updateOne(
-                                { chunkId },
-                                {
-                                    $set: {
-                                        repo: repo,
-                                        file: item.file,
-                                        chunkId,
-                                        text: chunk.text,
-                                        embedding,
-                                        metadata,
+                            await ensureQdrantCollection(db);
+                            await db.client.upsert(db.collectionName, {
+                                wait: true,
+                                points: [
+                                    {
+                                        id: chunkId,
+                                        vector: embedding,
+                                        payload: {
+                                            repo,
+                                            file: item.file,
+                                            chunkId,
+                                            text: chunk.text,
+                                            metadata,
+                                        },
                                     },
-                                },
-                                { upsert: true }
-                            );
+                                ],
+                            });
                         } catch (dbErr) {
                             console.error(`[DocGen] Failed to upsert chunk ${chunkId}:`, dbErr.message);
                         }
