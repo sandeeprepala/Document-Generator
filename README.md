@@ -146,14 +146,32 @@ Instead of regenerating the entire README, only the section between:
 
 ```md
 <!-- AUTO-GENERATED DOCS START -->
-## Recent Documentation Engine Updates
+### Documentation & RAG System Enhancements
 
-This section details recent enhancements to the automated documentation generation and knowledge base system.
+This update brings significant improvements to how project documentation is generated and managed, alongside a more robust Retrieval-Augmented Generation (RAG) backend.
 
-### Key Enhancements
+#### Key Changes:
 
-*   **Intelligent README Updates:**
-    *   The documentation pipeline now performs incremental updates to `README.md`. It identifies and replaces content within `<!-- AUTO-GENERATED DOCS START -->` and `<!-- AUTO-GENERATED DOCS END -->` markers, preserving any manually written sections.
+*   **Intelligent `README.md` Updates**
+    *   The documentation generation pipeline (`backend/docTrigger.js`) now intelligently updates the project's `README.md` by merging new auto-generated content into existing files. It uses special markers (`<!-- AUTO-GENERATED DOCS START -->` and `<!-- AUTO-GENERATED DOCS END -->`) to update only the designated section, preserving any manual edits outside this block.
+    *   Includes a fallback to create a new `README.md` if one doesn't exist.
+    *   A concise **"Change Summary"** section listing all added, modified, or removed files is now automatically appended to the generated documentation, providing immediate context for updates.
+*   **Enhanced Code Analysis**
+    *   The `extractMetadata` function in `docTrigger.js` has been improved to more accurately detect JavaScript/TypeScript function declarations, including arrow functions, providing richer context for documentation generation.
+*   **Robust Qdrant Chunk Management**
+    *   **Reliable Deletion:** The `deleteChunksForFile` function (`backend/rag.js`) has been refactored for greater resilience. It now uses a scroll-based approach to identify and delete all chunks associated with a specific file, with a robust fallback mechanism for individual point deletion if batch operations fail. This ensures stale or removed code is accurately purged from the vector database.
+    *   **Pre-Ingestion Deletion:** During `ingestDirectory` operations, existing chunks for a file are now explicitly deleted *before* new chunks are ingested. This guarantees that the vector database always contains the freshest representation of the codebase.
+*   **Updated AI Model & Prompting**
+    *   Both documentation generation and RAG-based question answering now utilize the `gemini-2.5-flash` model (`backend/gemini.js`).
+    *   Prompts have been refined for both tasks to encourage more concise, relevant, and structured outputs, including explicit source referencing for RAG answers.
+
+## Change Summary
+The following files were changed or updated in the codebase:
+- backend/chunker.js (modified)
+- backend/docTrigger.js (modified)
+- backend/gemini.js (modified)
+- backend/rag.js (modified)
+<!-- AUTO-GENERATED DOCS END -->` markers, preserving any manually written sections.
     *   A "Change Summary" section is automatically appended to the generated documentation, listing the files that triggered the update.
 *   **Enhanced Triggering for Documentation Generation:**
     *   Documentation updates are now triggered on both `push` events to `main`/`master` branches and when `pull_requests` are *merged*.
