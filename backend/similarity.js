@@ -1,4 +1,4 @@
-//comment6
+//comment7
 export function cosineSimilarity(vecA, vecB) {
     let dot = 0;
     let normA = 0;

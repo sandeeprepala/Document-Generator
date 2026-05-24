@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { chunkFile } from "./chunker.js";
 import { generateEmbedding } from "./embedding.js";
 import { getAllFiles } from "./repoReader.js";
-//comment6
+//comment7
 const VECTOR_COLLECTION = "chunks";
 const SUPPORTED_EXTENSIONS = new Set([
   ".js", ".jsx", ".ts", ".tsx", ".md",
