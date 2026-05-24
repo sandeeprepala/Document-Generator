@@ -48,3 +48,35 @@ The application is typically containerized using Docker for portability and depl
 -   `GET /vectors/search`: Perform a similarity search against stored vectors using a query vector or text.
 -   `GET /vectors/{id}`: Retrieve a specific vector and its associated metadata by ID.
 ```
+
+<!-- AUTO-GENERATED DOCS START -->
+### Automated Documentation & RAG System Enhancements
+
+This update introduces significant enhancements to the automated documentation generation pipeline and integrates a robust Retrieval-Augmented Generation (RAG) system for improved codebase understanding and interaction.
+
+#### Key Changes:
+
+*   **Automated Documentation Lifecycle**:
+    *   The system now automatically triggers documentation updates on `main`/`master` branch `push` events and `pull_request` `merge` events.
+    *   It intelligently identifies `added`, `modified`, and `removed` files to manage documentation and associated data in the vector database.
+*   **Qdrant Vector Database Integration**:
+    *   A Qdrant vector database is now used to store code chunks and their embeddings, facilitating efficient search and context retrieval for both documentation generation and RAG.
+    *   Stale documentation (for removed files or outdated code sections) is automatically purged from Qdrant.
+    *   New and updated code chunks are vectorized and stored with extracted metadata (e.g., function names, language).
+*   **Incremental README Updates**:
+    *   The `README.md` is no longer fully regenerated. Instead, a dedicated section within the `README.md` (marked by `<!-- AUTO-GENERATED DOCS START -->` and `<!-- AUTO-GENERATED DOCS END -->`) is updated, preserving any existing manual content.
+*   **Intelligent Documentation Generation**:
+    *   The Gemini model (`gemini-2.5-flash`) is provided with a list of specific changed files, allowing it to generate more focused and relevant documentation updates.
+*   **Retrieval-Augmented Generation (RAG) for Codebase Chat**:
+    *   Introduces a Qdrant-backed RAG system for answering questions about the codebase.
+    *   Supports ingestion of a wider range of file types (`.js`, `.jsx`, `.ts`, `.tsx`, `.md`, `.txt`, `.json`, `.html`, `.css`) into the vector database for comprehensive knowledge retrieval.
+    *   Features robust chunk search capabilities, including Qdrant's native vector search with a brute-force cosine similarity fallback for enhanced reliability.
+    *   Includes an `/api/chat` endpoint that can perform on-demand ingestion of the workspace root if no relevant chunks are found for a query.
+*   **New API Endpoints**:
+    *   `/api/status`: Check backend health and Qdrant connection status.
+    *   `/api/ingest`: Manually trigger codebase ingestion into Qdrant.
+    *   `/api/chat`: Query the codebase using RAG.
+    *   `/api/chunks`: List stored chunks in Qdrant.
+
+These updates provide a more dynamic, intelligent, and maintainable approach to project documentation and enable new ways to interact with the codebase through AI.
+<!-- AUTO-GENERATED DOCS END -->
