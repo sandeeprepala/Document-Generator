@@ -146,19 +146,38 @@ Instead of regenerating the entire README, only the section between:
 
 ```md
 <!-- AUTO-GENERATED DOCS START -->
-## Documentation Generation & README.md Updates
+```markdown
+## Frontend API & Configuration Updates
 
-This update refines how the documentation generation pipeline handles `README.md` files, improving flexibility and preventing potential processing loops.
+The frontend application's API communication and configuration have been updated to enhance maintainability and support flexible environment deployment.
 
-### Key Changes:
+### API Configuration
 
-*   **`README.md` Exclusion from Source Processing:**
-    *   The `README.md` file is now explicitly identified using a new `isDocsFile` helper function and a `DOCS_FILE` constant.
-    *   The `isSupportedFile` check has been updated to exclude `README.md` from being treated as a source code file for documentation generation, preventing the system from attempting to document itself.
-*   **Preventing Documentation Generation Loops:**
-    *   The `triggerDocGeneration` process now includes a check to detect if a commit or pull request consists *only* of changes to `README.md`. If so, the documentation generation process is skipped entirely to prevent unnecessary re-processing or infinite loops.
-*   **Intelligent `README.md` Merging:**
-    *   A new `mergeDocsIntoReadme` function is introduced to intelligently update `README.md` files. This function uses special markers (`<!-- AUTO-GENERATED DOCS START -->` and `<!-- AUTO-GENERATED DOCS END -->`) to identify and replace only the auto-generated section of the `README.md`.
+*   **Centralized Endpoints:** All backend API endpoints are now defined in `frontend/src/config.js`. This centralizes API paths, making them easier to manage and update.
+*   **Environment Variable Support:** The base URL for API calls (`API_BASE_URL`) is now dynamically determined using Vite environment variables (`import.meta.env.VITE_API_URL`), falling back to `http://localhost:5000` for local development if not specified.
+
+### Frontend API Interactions
+
+The `App.jsx` component has been updated to utilize these centralized API endpoints for core features:
+
+*   **`/api/status`**: Used on initial load to check the backend's status, including Qdrant connectivity.
+*   **`/api/ingest`**: Triggers the ingestion of documents into the vector store.
+*   **`/api/chunks`**: Retrieves a list of ingested document chunks. The application now specifically requests a limit of 10 chunks for display.
+*   **`/api/chat`**: Sends user queries to the RAG pipeline and receives AI-generated answers.
+
+These changes streamline API endpoint management and make the application more robust for different deployment scenarios.
+```
+
+## Change Summary
+The following files were changed or updated in the codebase:
+- backend/.env.example (added)
+- frontend/.env (added)
+- frontend/src/config.js (added)
+- backend/package.json (modified)
+- frontend/package.json (modified)
+- frontend/src/App.css (modified)
+- frontend/src/App.jsx (modified)
+<!-- AUTO-GENERATED DOCS END -->`) to identify and replace only the auto-generated section of the `README.md`.
     *   This ensures that any custom content outside these markers is preserved, allowing users to maintain additional, manually written information in their `README.md` files without it being overwritten by the automated generation process.
     *   If markers are not found, the generated documentation is appended, and if `README.md` doesn't exist, a new one is created with a default heading.
 
