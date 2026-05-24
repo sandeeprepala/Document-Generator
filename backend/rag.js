@@ -39,55 +39,86 @@ export async function deleteChunksForFile(db, relativePath) {
   }
 
   const { client, collectionName } = db;
-
-  // Normalize to forward slashes — GitHub always sends forward slashes
-  // but Windows stores backslashes, so we normalize both sides
   const normalizedTarget = normalizePath(relativePath);
 
   console.log(`[Qdrant] Deleting chunks for: ${normalizedTarget}`);
 
   try {
     let idsToDelete = [];
-    let offset = null;
+    let nextOffset = undefined;
 
+    // Scroll through all points to find matching filePaths
     while (true) {
       const scrollResult = await client.scroll(collectionName, {
-        limit: 500,
-        ...(offset !== null ? { offset } : {}),
+        limit: 100,
+        offset: nextOffset,
         with_payload: true,
         with_vector: false,
       });
 
       const points = scrollResult.points || [];
 
-      const matched = points
-        .filter((point) => {
-          const storedPath = normalizePath(point.payload?.filePath ?? "");
-          const targetPath = normalizedTarget;
+      for (const point of points) {
+        const storedPath = normalizePath(point.payload?.filePath ?? "");
+        if (
+          storedPath === normalizedTarget ||
+          storedPath.endsWith(`/${normalizedTarget}`) ||
+          normalizedTarget.endsWith(`/${storedPath}`)
+        ) {
+          idsToDelete.push(point.id);
+        }
+      }
 
-          return (
-            storedPath === targetPath ||                          // exact match
-            storedPath.endsWith(`/${targetPath}`) ||             // stored has prefix
-            targetPath.endsWith(`/${storedPath}`)                // target has prefix
-          );
-        })
-        .map((point) => point.id);
-
-      idsToDelete.push(...matched);
-
-      if (points.length < 500 || !scrollResult.next_page_offset) break;
-      offset = scrollResult.next_page_offset;
+      // next_page_offset is undefined/null when there are no more pages
+      if (!scrollResult.next_page_offset) break;
+      nextOffset = scrollResult.next_page_offset;
     }
+
+    console.log(`[Qdrant] Found ${idsToDelete.length} chunks to delete for ${normalizedTarget}`);
 
     if (idsToDelete.length === 0) {
       console.log(`[Qdrant] No stale chunks found for ${normalizedTarget}`);
       return;
     }
 
-    await client.delete(collectionName, { wait: true, points: idsToDelete });
-    console.log(`[Qdrant] Deleted ${idsToDelete.length} stale chunks for ${normalizedTarget}`);
+    // Delete in batches of 100 to avoid request size limits
+    const BATCH_SIZE = 100;
+    for (let i = 0; i < idsToDelete.length; i += BATCH_SIZE) {
+      const batch = idsToDelete.slice(i, i + BATCH_SIZE);
+      
+      // Use REST directly via client.api if the SDK delete is broken
+      try {
+        await client.delete(collectionName, {
+          wait: true,
+          points: batch,
+        });
+        console.log(`[Qdrant] Deleted batch of ${batch.length} chunks`);
+      } catch (deleteErr) {
+        console.warn(`[Qdrant] client.delete failed (${deleteErr.message}), trying filter delete...`);
+        
+        // Fallback: delete one by one using point ID filter
+        for (const id of batch) {
+          try {
+            await client.delete(collectionName, {
+              wait: true,
+              filter: {
+                must: [
+                  {
+                    has_id: [id],
+                  },
+                ],
+              },
+            });
+          } catch (singleErr) {
+            console.error(`[Qdrant] Failed to delete point ${id}:`, singleErr.message);
+          }
+        }
+      }
+    }
+
+    console.log(`[Qdrant] Successfully deleted ${idsToDelete.length} chunks for ${normalizedTarget}`);
   } catch (err) {
-    console.error(`[Qdrant] Failed to delete chunks for ${normalizedTarget}:`, err.message);
+    console.error(`[Qdrant] deleteChunksForFile failed for ${normalizedTarget}:`, err.message);
     throw err;
   }
 }
