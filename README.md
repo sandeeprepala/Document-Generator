@@ -1,44 +1,51 @@
 # Project Overview
-- This project is a backend service designed to automatically generate and update developer documentation (e.g., `README.md`) for GitHub repositories. It integrates with GitHub webhooks to trigger documentation updates on code changes and provides an API for RAG (Retrieval Augmented Generation) based chat with the codebase.
-- **Main technologies used**: Node.js, Express.js, Octokit (GitHub API), Qdrant (Vector Database), Google Gemini API, Hugging Face Transformers.js (for embeddings).
+This project is a Node.js service designed to automate documentation generation for code repositories. It triggers documentation updates in response to code changes (pushes or pull requests), leveraging AI to generate `README.md` content and a vector database for code context.
+
+**Main technologies used:**
+- **Node.js:** Runtime environment.
+- **GitHub API (Octokit):** For repository interaction (fetching code, pushing updates).
+- **Google Gemini API:** For AI-powered documentation generation.
+- **Qdrant:** Vector database for storing code embeddings.
 
 # Core Features
-- **Automated Documentation**: Generates and updates `README.md` files in GitHub repositories based on code changes.
-- **Webhook-driven Updates**: Automatically triggers documentation generation on `push` to main/master branches or on `pull_request` merges.
-- **Code Ingestion & Embedding**: Chunks source code files, generates vector embeddings, and stores them in a vector database.
-- **RAG-powered Chat**: Allows users to ask questions about the ingested codebase, leveraging the vector database for context retrieval.
+- **Automated Documentation:** Generates and updates `README.md` files automatically on GitHub `push` or `pull_request` events.
+- **Code Analysis:** Parses supported code files (JS/TS/JSX/TSX), chunks them, and extracts basic metadata.
+- **Semantic Contextualization:** Creates vector embeddings for code chunks and stores them in Qdrant for Retrieval-Augmented Generation (RAG).
+- **AI-Powered Content Generation:** Utilizes the Gemini LLM to create comprehensive documentation from processed code.
+- **Repository Integration:** Fetches relevant code changes and commits the generated `README.md` back to the repository.
 
 # Architecture
-- **Backend**: A Node.js Express server acts as the central hub. It listens for GitHub webhooks, interacts with the GitHub API to fetch file content, processes code using local embedding models (Transformers.js), stores and retrieves code chunks from Qdrant, and uses the Google Gemini API for natural language understanding and text generation (documentation and chat responses).
+The system operates as a backend service, likely triggered by webhooks or a scheduled process. It integrates with GitHub via Octokit to monitor and modify repositories. Code content is processed locally (chunking, embedding generation) before interacting with external services: Google Gemini for AI generation and Qdrant for persistent storage of code embeddings. There is no explicit frontend in this codebase.
 
 # Important Modules
-- **Authentication**:
-    - **GitHub**: Uses a GitHub Personal Access Token (`GITHUB_TOKEN`) for Octokit to read repository content and push `README.md` updates.
-    - **Google Gemini**: Uses a Google API Key (`GEMINI_API_KEY`) to access the Gemini language model.
-    - **Qdrant**: Connects to Qdrant using `QDRANT_URL` and `QDRANT_API_KEY`.
-- **APIs**: The system exposes a RESTful API via Express.js for managing ingestion and chat interactions.
-- **Database**: Qdrant serves as the vector database, storing code chunks and their corresponding embeddings for efficient semantic search.
-- **Real-time systems**: GitHub webhooks are used to enable real-time event-driven documentation generation upon specified repository activities (e.g., code pushes or PR merges).
+- **Authentication:**
+    - **GitHub API:** Relies on an authenticated Octokit instance, typically using a GitHub App installation token or a Personal Access Token.
+    - **External APIs:** Implies API keys for Google Gemini and connection details for Qdrant.
+- **APIs:**
+    - **GitHub API:** Used for `pulls.listFiles`, `repos.getContent`, `repos.createOrUpdateFileContents`.
+    - **Google Gemini API:** Used for `generateDocumentation`.
+    - **Qdrant Client:** Used for `client.upsert` to manage vector points.
+- **Database:**
+    - **Qdrant (Vector Database):** Stores code chunks, their vector embeddings, and associated metadata (e.g., file path, function name). This forms a semantic index of the codebase.
+- **Real-time systems:** The system processes GitHub events (push, pull_request) in a near real-time fashion, acting as an event-driven automation pipeline.
 
 # Setup
-1.  **Clone the repository**: `git clone <repo-url>`
-2.  **Install dependencies**: `npm install`
-3.  **Configure environment variables**: Create a `.env` file with:
-    ```
-    GITHUB_TOKEN=<Your_GitHub_Personal_Access_Token>
-    GEMINI_API_KEY=<Your_Google_Gemini_API_Key>
-    QDRANT_URL=<Your_Qdrant_Cloud_URL_or_local_endpoint>
-    QDRANT_API_KEY=<Your_Qdrant_API_Key>
-    PORT=5000
-    ```
-4.  **Run the application**: `node app.js`
+1.  **Clone the repository:** `git clone <repo-url>`
+2.  **Install dependencies:** `npm install`
+3.  **Configure environment variables:**
+    *   `GITHUB_TOKEN`: A Personal Access Token or a GitHub App installation token with appropriate permissions (repo content read/write).
+    *   `GEMINI_API_KEY`: Your API key for Google Gemini.
+    *   `QDRANT_URL`, `QDRANT_API_KEY`: Connection details for your Qdrant instance.
 
 # Deployment
-The application is a Node.js server. It requires hosting on a platform that can run Node.js applications and can be publicly exposed to receive GitHub webhook events. A persistent Qdrant instance (cloud-hosted or self-managed) is necessary for vector storage. GitHub webhooks must be configured in the target repositories to point to the deployed server's `/github/webhook` endpoint.
+This service is designed to run in an environment capable of receiving GitHub webhook events or being triggered periodically. Common deployment options include serverless functions (e.g., AWS Lambda, Google Cloud Functions) or containerized services (e.g., Docker, Kubernetes). It requires network access to GitHub, the Google Gemini API, and a Qdrant instance.
 
 # Major APIs
--   `POST /github/webhook`: Receives GitHub `push` and `pull_request` events to trigger automated documentation generation.
--   `POST /api/ingest`: Manually ingests code from a specified directory into the Qdrant vector database.
--   `POST /api/chat`: Accepts a natural language question and returns an answer based on the semantically retrieved code chunks.
--   `GET /api/chunks`: Lists a limited number of ingested code chunks.
--   `GET /api/status`: Provides a health check and indicates if Qdrant is connected.
+-   **GitHub:**
+    -   `GET /repos/{owner}/{repo}/pulls/{pull_number}/files`: Retrieve files changed in a Pull Request.
+    -   `GET /repos/{owner}/{repo}/contents/{path}`: Fetch the content of a file.
+    -   `PUT /repos/{owner}/{repo}/contents/{path}`: Create or update a file (used for `README.md`).
+-   **Google Gemini:**
+    -   `POST /v1beta/models/gemini-pro:generateContent`: Used by `generateDocumentation` for text generation.
+-   **Qdrant:**
+    -   `PUT /collections/{collection_name}/points`: Used by `db.client.upsert` to add or update vector points.
