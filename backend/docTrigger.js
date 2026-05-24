@@ -204,6 +204,18 @@ export async function triggerDocGeneration({
 
         console.log(`[DocGen] Processing ${filesToProcess.length} supported files`);
 
+        let existingReadme = "";
+        try {
+            existingReadme = await fetchFileContent(owner, repo, "README.md", octokit);
+            console.log("[DocGen] Fetched existing README.md for incremental update.");
+        } catch (err) {
+            if (err.status === 404) {
+                console.log("[DocGen] No existing README.md found; creating a new one.");
+            } else {
+                throw err;
+            }
+        }
+
         // ── STEP 2: Fetch file content in memory and chunk ────────────────────
         const allChunks = [];
 
@@ -286,17 +298,33 @@ export async function triggerDocGeneration({
         const combinedContext = allChunks.map((item) => item.text).join("\n");
 
         // ── STEP 4: Generate documentation via Gemini ───────────────────────
-        const docs = await generateDocumentation(combinedContext);
+        const docs = await generateDocumentation(
+            combinedContext,
+            filesToProcess.map((item) => item.file)
+        );
         console.log("[DocGen] Documentation generated successfully");
 
         // ── STEP 5: Push README.md back to the repo ────────────────────────
-        await pushDocsToRepo({ repoFullName, octokit, docs });
+        await pushDocsToRepo({ repoFullName, octokit, docs, existingReadme });
 
         console.log("[DocGen] Done ✓");
     } catch (err) {
         console.error("[DocGen] Pipeline failed:", err.message);
         throw err;
     }
+}
+
+function mergeDocsIntoReadme(existingReadme, generatedDocs) {
+    const startMarker = "<!-- AUTO-GENERATED DOCS START -->";
+    const endMarker = "<!-- AUTO-GENERATED DOCS END -->";
+    const generatedBlock = `${startMarker}\n${generatedDocs.trim()}\n${endMarker}`;
+
+    if (existingReadme.includes(startMarker) && existingReadme.includes(endMarker)) {
+        const sectionRegex = new RegExp(`${startMarker}[\s\S]*?${endMarker}`, "m");
+        return existingReadme.replace(sectionRegex, generatedBlock);
+    }
+
+    return `${existingReadme.trim()}\n\n${generatedBlock}\n`;
 }
 
 /**
@@ -307,15 +335,15 @@ export async function triggerDocGeneration({
  * @param {object} params.octokit - Authenticated Octokit instance
  * @param {string} params.docs - Documentation content to push
  */
-async function pushDocsToRepo({ repoFullName, octokit, docs }) {
+async function pushDocsToRepo({ repoFullName, octokit, docs, existingReadme = "" }) {
     const [owner, repo] = repoFullName.split("/");
     const filePath = "README.md";
-    const content = Buffer.from(docs).toString("base64");
 
     console.log(`[DocGen] Pushing ${filePath} to ${repoFullName}...`);
 
-    // Check if README.md already exists (need its SHA to update it)
     let existingSha = null;
+    let mergedReadme;
+
     try {
         const { data } = await octokit.repos.getContent({
             owner,
@@ -323,16 +351,20 @@ async function pushDocsToRepo({ repoFullName, octokit, docs }) {
             path: filePath,
         });
         existingSha = data.sha;
-        console.log("[DocGen] Existing README.md found — will update.");
+        const currentReadme = Buffer.from(data.content, "base64").toString("utf-8");
+        mergedReadme = mergeDocsIntoReadme(currentReadme, docs);
+        console.log("[DocGen] Existing README.md found — will update only generated docs section.");
     } catch (err) {
         if (err.status === 404) {
-            console.log("[DocGen] No existing README.md — will create.");
+            console.log("[DocGen] No existing README.md — will create a new file.");
+            mergedReadme = `# Project Documentation\n\n${docs.trim()}\n`;
         } else {
             throw err;
         }
     }
 
-    // Create or update the file
+    const content = Buffer.from(mergedReadme).toString("base64");
+
     await octokit.repos.createOrUpdateFileContents({
         owner,
         repo,

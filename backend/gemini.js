@@ -5,60 +5,37 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 const genAI = new GoogleGenerativeAI(apiKey);
 //comment8
-export async function generateDocumentation(context) {
+export async function generateDocumentation(context, changedFiles = []) {
   const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+  const fileList = changedFiles.length
+    ? `\nChanged files:\n- ${changedFiles.join("\n- ")}`
+    : "";
 
   const prompt = `
 You are a senior software engineer.
 
-Analyze this repository and generate concise developer documentation.
+Update existing project documentation based only on the changed code below.
+Do not regenerate the full README. Produce a concise markdown section suitable for insertion into the current README.
+Keep the output focused on what changed and why the code was updated.
 
 IMPORTANT RULES:
 - Keep documentation concise
 - Keep output clean and readable
-- Do NOT explain every file
+- Do NOT explain every file in the repo
 - Do NOT generate huge tables
-- Do NOT go too deep into implementation
-- Focus only on important architecture
-- Return proper markdown format
+- Do NOT rewrite the entire README
+- Only include changed code context and a short summary
+- Use markdown headings and bullet points
 
-Generate ONLY these sections:
+${fileList}
 
-# Project Overview
-- What the project does
-- Main technologies used
-
-# Core Features
-- Main functionalities only
-
-# Architecture
-- Short frontend/backend explanation
-
-# Important Modules
-- Authentication
-- APIs
-- Database
-- Real-time systems
-
-# Setup
-- Minimal installation steps
-
-# Deployment
-- Short deployment summary
-
-# Major APIs
-- Mention only important endpoints
-
-CODEBASE:
+CHANGED CODE CONTEXT:
 ${context}
 `;
 
   const result = await model.generateContent(prompt);
   const documentation = result.response.text();
-
-  fs.writeFileSync("README.md", documentation);
-  console.log("[DocGen] README.md saved locally ✓");
-
   return documentation;
 }
 
