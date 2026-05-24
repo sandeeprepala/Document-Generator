@@ -34,18 +34,51 @@ async function deleteChunksForFile(db, relativePath) {
   if (!db || !db.client || !db.collectionName) {
     throw new Error("Qdrant database connection is required for chunk deletion.");
   }
+
   const { client, collectionName } = db;
-  await client.delete(collectionName, {
-    wait: true,
-    filter: {
-      must: [
-        {
-          key: "filePath",
-          match: { value: relativePath },
-        },
-      ],
-    },
-  });
+  const filter = {
+    must: [
+      {
+        key: "filePath",
+        match: { value: relativePath },
+      },
+    ],
+  };
+
+  try {
+    await client.delete(collectionName, { wait: true, filter });
+    return;
+  } catch (err) {
+    console.warn(
+      `[Qdrant] delete by filter failed for ${relativePath}, falling back to id scan: ${err.message}`
+    );
+  }
+
+  // Fallback for older or incompatible payload filtering behavior
+  const idsToDelete = [];
+  let offset = 0;
+  while (true) {
+    const scroll = await client.scroll(collectionName, {
+      limit: 500,
+      offset,
+      with_payload: true,
+      with_vector: false,
+    });
+    const points = scroll.points || [];
+    for (const point of points) {
+      if (point.payload?.filePath === relativePath) {
+        idsToDelete.push(point.id);
+      }
+    }
+    if (points.length < 500) break;
+    offset += points.length;
+  }
+
+  if (idsToDelete.length === 0) {
+    return;
+  }
+
+  await client.delete(collectionName, { wait: true, points: idsToDelete });
 }
 
 
