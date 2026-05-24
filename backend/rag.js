@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { chunkFile } from "./chunker.js";
 import { generateEmbedding } from "./embedding.js";
 import { getAllFiles } from "./repoReader.js";
-//comment81
+
 const VECTOR_COLLECTION = "chunks";
 const SUPPORTED_EXTENSIONS = new Set([
   ".js", ".jsx", ".ts", ".tsx", ".md",
@@ -14,10 +14,13 @@ const DEFAULT_CHUNK_SIZE = 800;
 const DEFAULT_TOP_K = 5;
 const DEFAULT_DIMENSIONS = 384;
 
+// Always normalize to forward slashes for consistent storage and matching
+function normalizePath(filePath) {
+  return filePath.replace(/\\/g, "/");
+}
+
 function hashChunkId(filePath, chunkIndex) {
-  // Create a SHA-256 hex and convert the first 32 hex chars into UUID format
   const hex = crypto.createHash("sha256").update(`${filePath}:${chunkIndex}`).digest("hex");
-  // Use first 32 chars (16 bytes) and format as 8-4-4-4-12 to satisfy UUID pattern
   const h = hex.slice(0, 32);
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
 }
@@ -30,57 +33,64 @@ function sanitizeSourceRoot(sourceRoot) {
   return path.resolve(sourceRoot || path.resolve(process.cwd(), "../"));
 }
 
-async function deleteChunksForFile(db, relativePath) {
+export async function deleteChunksForFile(db, relativePath) {
   if (!db || !db.client || !db.collectionName) {
     throw new Error("Qdrant database connection is required for chunk deletion.");
   }
 
   const { client, collectionName } = db;
-  const filter = {
-    must: [
-      {
-        key: "filePath",
-        match: { value: relativePath },
-      },
-    ],
-  };
+
+  // Normalize to forward slashes — GitHub always sends forward slashes
+  // but Windows stores backslashes, so we normalize both sides
+  const normalizedTarget = normalizePath(relativePath);
+
+  console.log(`[Qdrant] Deleting chunks for: ${normalizedTarget}`);
 
   try {
-    await client.delete(collectionName, { wait: true, filter });
-    return;
-  } catch (err) {
-    console.warn(
-      `[Qdrant] delete by filter failed for ${relativePath}, falling back to id scan: ${err.message}`
-    );
-  }
+    let idsToDelete = [];
+    let offset = null;
 
-  // Fallback for older or incompatible payload filtering behavior
-  const idsToDelete = [];
-  let offset = 0;
-  while (true) {
-    const scroll = await client.scroll(collectionName, {
-      limit: 500,
-      offset,
-      with_payload: true,
-      with_vector: false,
-    });
-    const points = scroll.points || [];
-    for (const point of points) {
-      if (point.payload?.filePath === relativePath) {
-        idsToDelete.push(point.id);
-      }
+    while (true) {
+      const scrollResult = await client.scroll(collectionName, {
+        limit: 500,
+        ...(offset !== null ? { offset } : {}),
+        with_payload: true,
+        with_vector: false,
+      });
+
+      const points = scrollResult.points || [];
+
+      const matched = points
+        .filter((point) => {
+          const storedPath = normalizePath(point.payload?.filePath ?? "");
+          const targetPath = normalizedTarget;
+
+          return (
+            storedPath === targetPath ||                          // exact match
+            storedPath.endsWith(`/${targetPath}`) ||             // stored has prefix
+            targetPath.endsWith(`/${storedPath}`)                // target has prefix
+          );
+        })
+        .map((point) => point.id);
+
+      idsToDelete.push(...matched);
+
+      if (points.length < 500 || !scrollResult.next_page_offset) break;
+      offset = scrollResult.next_page_offset;
     }
-    if (points.length < 500) break;
-    offset += points.length;
-  }
 
-  if (idsToDelete.length === 0) {
-    return;
-  }
+    if (idsToDelete.length === 0) {
+      console.log(`[Qdrant] No stale chunks found for ${normalizedTarget}`);
+      return;
+    }
 
-  await client.delete(collectionName, { wait: true, points: idsToDelete });
+    await client.delete(collectionName, { wait: true, points: idsToDelete });
+    console.log(`[Qdrant] Deleted ${idsToDelete.length} stale chunks for ${normalizedTarget}`);
+  } catch (err) {
+    console.error(`[Qdrant] Failed to delete chunks for ${normalizedTarget}:`, err.message);
+    throw err;
+  }
 }
-
 
 export async function ingestDirectory({ db, sourceRoot, chunkSize = DEFAULT_CHUNK_SIZE }) {
   if (!db || !db.client || !db.collectionName) {
@@ -101,16 +111,18 @@ export async function ingestDirectory({ db, sourceRoot, chunkSize = DEFAULT_CHUN
     return { inserted: 0, files: 0, chunks: 0 };
   }
 
-  const client = db.client;
-  const collectionName = db.collectionName;
+  const { client, collectionName } = db;
   await ensureQdrantCollection(db);
 
   let inserted = 0;
   const batch = [];
 
   for (const filePath of files) {
-    const relativeFilePath = path.relative(rootPath, filePath);
+    // Always store with forward slashes so GitHub webhook paths match
+    const relativeFilePath = normalizePath(path.relative(rootPath, filePath));
+
     await deleteChunksForFile(db, relativeFilePath);
+
     const content = fs.readFileSync(filePath, "utf8");
     const chunks = chunkFile(content, relativeFilePath, chunkSize);
 
@@ -123,12 +135,12 @@ export async function ingestDirectory({ db, sourceRoot, chunkSize = DEFAULT_CHUN
       try {
         embedding = await generateEmbedding(chunk.text);
       } catch (err) {
-        console.error(`[Ingest] Embedding failed for chunk ${index} of ${filePath}:`, err.message);
+        console.error(`[Ingest] Embedding failed for chunk ${index} of ${relativeFilePath}:`, err.message);
         continue;
       }
 
       if (!Array.isArray(embedding) || embedding.length === 0) {
-        console.warn(`[Ingest] Empty embedding skipped for chunk ${index} of ${filePath}`);
+        console.warn(`[Ingest] Empty embedding skipped for chunk ${index} of ${relativeFilePath}`);
         continue;
       }
 
@@ -137,11 +149,9 @@ export async function ingestDirectory({ db, sourceRoot, chunkSize = DEFAULT_CHUN
         id: chunkId,
         vector: embedding,
         payload: {
-          filePath: chunk.file,
-          sourcePath: filePath,
+          filePath: chunk.file,      // already normalized via relativeFilePath
           text: chunk.text,
           metadata: {
-            sourcePath: filePath,
             chunkIndex: index,
             fileExtension: path.extname(filePath).toLowerCase(),
           },
@@ -184,8 +194,7 @@ export async function searchChunks({ db, query, topK = DEFAULT_TOP_K }) {
     throw new Error("Failed to generate query embedding.");
   }
 
-  const client = db.client;
-  const collectionName = db.collectionName;
+  const { client, collectionName } = db;
   await ensureQdrantCollection(db);
 
   const totalCountResult = await client.count(collectionName, { exact: true });
@@ -197,7 +206,6 @@ export async function searchChunks({ db, query, topK = DEFAULT_TOP_K }) {
     return [];
   }
 
-  // ── Attempt 1: $vectorSearch (Atlas Vector Search index) ──────────────────
   try {
     const rawResults = await client.search(collectionName, {
       vector: queryEmbedding,
@@ -205,11 +213,11 @@ export async function searchChunks({ db, query, topK = DEFAULT_TOP_K }) {
       with_payload: true,
       with_vector: false,
     });
+
     const results = rawResults
       .filter(
         (doc) =>
-          doc &&
-          doc.payload &&
+          doc?.payload &&
           typeof doc.payload.filePath === "string" &&
           typeof doc.payload.text === "string" &&
           doc.payload.text.trim().length > 0
@@ -219,22 +227,23 @@ export async function searchChunks({ db, query, topK = DEFAULT_TOP_K }) {
         text: doc.payload.text,
         score: doc.score,
       }));
-    console.log(`[Search] Qdrant search returned ${rawResults.length} results, ${results.length} valid results after filtering empty text`);
+
+    console.log(`[Search] Qdrant search returned ${rawResults.length} results, ${results.length} valid`);
     if (results.length > 0) return results;
   } catch (err) {
-    console.warn("[Search] $vectorSearch failed:", err.message);
+    console.warn("[Search] Qdrant search failed:", err.message);
   }
 
-  // ── Attempt 2: Brute-force cosine similarity ───────────────────────────────
-  console.log("[Search] Falling back to Qdrant scroll listing... ");
+  // Brute-force fallback
+  console.log("[Search] Falling back to brute-force cosine similarity...");
   try {
     const scroll = await client.scroll(collectionName, {
       limit: 1000,
       with_payload: true,
       with_vector: true,
     });
-    const allDocs = scroll.points || [];
 
+    const allDocs = scroll.points || [];
     console.log(`[Search] Brute-force scanning ${allDocs.length} docs`);
 
     const scored = allDocs
@@ -242,10 +251,8 @@ export async function searchChunks({ db, query, topK = DEFAULT_TOP_K }) {
         (doc) =>
           Array.isArray(doc.vector) &&
           doc.vector.length > 0 &&
-          doc.payload &&
-          typeof doc.payload.filePath === "string" &&
-          typeof doc.payload.text === "string" &&
-          doc.payload.text.trim().length > 0
+          doc.payload?.filePath &&
+          doc.payload?.text?.trim().length > 0
       )
       .map((doc) => ({
         filePath: doc.payload.filePath,
@@ -255,7 +262,7 @@ export async function searchChunks({ db, query, topK = DEFAULT_TOP_K }) {
       .sort((a, b) => b.score - a.score)
       .slice(0, topK);
 
-    console.log(`[Search] Brute-force returning ${scored.length} valid results`);
+    console.log(`[Search] Brute-force returning ${scored.length} results`);
     return scored;
   } catch (err) {
     console.error("[Search] Brute-force fallback failed:", err.message);
@@ -277,17 +284,16 @@ export async function listChunks({ db, limit = 20 }) {
     filePath: point.payload?.filePath,
     text: point.payload?.text,
     updatedAt: point.payload?.updatedAt,
-    score: point.score,
   }));
 }
 
-async function ensureQdrantCollection(db) {
+export async function ensureQdrantCollection(db) {
   if (!db || !db.client || !db.collectionName) {
     throw new Error("Qdrant database connection is required to ensure collection.");
   }
   const { client, collectionName } = db;
   const existing = await client.getCollections();
-  if (!existing.collections?.some((collection) => collection.name === collectionName)) {
+  if (!existing.collections?.some((c) => c.name === collectionName)) {
     await client.createCollection(collectionName, {
       vectors: { size: DEFAULT_DIMENSIONS, distance: "Cosine" },
     });
@@ -295,16 +301,12 @@ async function ensureQdrantCollection(db) {
   }
 }
 
-export { ensureQdrantCollection, deleteChunksForFile };
-
 function cosineSimilarity(a = [], b = []) {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return 0;
 
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
+  let dot = 0, normA = 0, normB = 0;
 
-  for (let i = 0; i < a.length; i += 1) {
+  for (let i = 0; i < a.length; i++) {
     dot += a[i] * b[i];
     normA += a[i] * a[i];
     normB += b[i] * b[i];

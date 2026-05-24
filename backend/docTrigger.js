@@ -3,7 +3,7 @@ import { chunkFile } from "./chunker.js";
 import { generateEmbedding } from "./embedding.js";
 import { generateDocumentation } from "./gemini.js";
 import { ensureQdrantCollection, deleteChunksForFile } from "./rag.js";
-//comment71
+//comment712
 // File extensions to process
 const SUPPORTED_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx"];
 const DOCS_FILE = "Readme.md";
