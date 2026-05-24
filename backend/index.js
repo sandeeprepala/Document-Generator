@@ -8,7 +8,7 @@ import { QdrantClient } from "@qdrant/js-client-rest";
 import { triggerDocGeneration } from "./docTrigger.js";
 import { ingestDirectory, searchChunks, listChunks } from "./rag.js";
 import { generateAnswer } from "./gemini.js";
-//comment812341
+//comment8123412
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const workspaceRoot = path.resolve(__dirname, "../");
