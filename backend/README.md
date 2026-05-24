@@ -1,51 +1,44 @@
 # Project Overview
-- This project is an automated documentation generator that listens to GitHub events (pushes to `main`/`master` or merged Pull Requests). It processes changed code, generates embeddings, optionally stores chunks in a vector database, and uses an LLM to synthesize project documentation. The generated documentation is then committed back to the repository as `README.md`.
-- **Main technologies used**: Node.js, Express.js, GitHub API (Octokit), HuggingFace Transformers (Xenova.js), Google Gemini API, MongoDB (optional).
+- This project is a backend service designed to automatically generate and update developer documentation (e.g., `README.md`) for GitHub repositories. It integrates with GitHub webhooks to trigger documentation updates on code changes and provides an API for RAG (Retrieval Augmented Generation) based chat with the codebase.
+- **Main technologies used**: Node.js, Express.js, Octokit (GitHub API), Qdrant (Vector Database), Google Gemini API, Hugging Face Transformers.js (for embeddings).
 
 # Core Features
-- **Automated Documentation Updates**: Automatically generates and updates the `README.md` file in response to code changes on designated branches or merged pull requests.
-- **Code Processing Pipeline**: Fetches changed file content, chunks it into manageable pieces, and generates vector embeddings for each chunk.
-- **Vector Storage (Optional)**: Persists code chunks, their embeddings, and extracted metadata in MongoDB, enabling vector search capabilities.
-- **LLM-Powered Documentation Generation**: Leverages the Google Gemini API to analyze processed code context and generate comprehensive developer documentation.
-- **GitHub Integration**: Seamlessly interacts with GitHub to retrieve code, monitor events, and push updated documentation.
+- **Automated Documentation**: Generates and updates `README.md` files in GitHub repositories based on code changes.
+- **Webhook-driven Updates**: Automatically triggers documentation generation on `push` to main/master branches or on `pull_request` merges.
+- **Code Ingestion & Embedding**: Chunks source code files, generates vector embeddings, and stores them in a vector database.
+- **RAG-powered Chat**: Allows users to ask questions about the ingested codebase, leveraging the vector database for context retrieval.
 
 # Architecture
-The system is a **monolithic backend service** implemented in Node.js with Express.js, acting as a GitHub webhook listener.
-- **Frontend**: Not present in this codebase.
-- **Backend**: An Express.js server receives GitHub webhooks. It orchestrates a pipeline that uses GitHub's API to fetch code, a local machine learning model for embeddings, an external LLM (Gemini) for text generation, and optionally MongoDB for persistent storage of code chunks and embeddings. The final output (documentation) is committed back to the GitHub repository.
+- **Backend**: A Node.js Express server acts as the central hub. It listens for GitHub webhooks, interacts with the GitHub API to fetch file content, processes code using local embedding models (Transformers.js), stores and retrieves code chunks from Qdrant, and uses the Google Gemini API for natural language understanding and text generation (documentation and chat responses).
 
 # Important Modules
 - **Authentication**:
-    - **GitHub**: Utilizes a `GITHUB_TOKEN` (Personal Access Token) for `Octokit` to authenticate and perform operations like fetching file content and committing `README.md`.
-    - **Google Gemini**: Authenticates with the Google Generative AI API using `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) to generate documentation.
-- **APIs**:
-    - **GitHub API (via Octokit)**: Used for repository interaction (getting file content, listing PR changes, creating/updating files).
-    - **Google Generative AI API (Gemini)**: Provides the large language model capabilities for synthesizing documentation.
-    - **HuggingFace Transformers (Xenova.js)**: Used locally to run the `all-MiniLM-L6-v2` model for generating text embeddings.
-- **Database**:
-    - **MongoDB**: An optional component. If `MONGO_URI` is configured, it serves as a persistent store for code chunks, their embeddings, and basic metadata in a `chunks` collection.
-- **Real-time systems**:
-    - **GitHub Webhooks**: The core real-time integration, triggering the documentation generation pipeline upon `push` events to `main`/`master` branches or `pull_request` `merged` events. The pipeline is designed to run asynchronously to ensure prompt webhook responses.
+    - **GitHub**: Uses a GitHub Personal Access Token (`GITHUB_TOKEN`) for Octokit to read repository content and push `README.md` updates.
+    - **Google Gemini**: Uses a Google API Key (`GEMINI_API_KEY`) to access the Gemini language model.
+    - **Qdrant**: Connects to Qdrant using `QDRANT_URL` and `QDRANT_API_KEY`.
+- **APIs**: The system exposes a RESTful API via Express.js for managing ingestion and chat interactions.
+- **Database**: Qdrant serves as the vector database, storing code chunks and their corresponding embeddings for efficient semantic search.
+- **Real-time systems**: GitHub webhooks are used to enable real-time event-driven documentation generation upon specified repository activities (e.g., code pushes or PR merges).
 
 # Setup
 1.  **Clone the repository**: `git clone <repo-url>`
 2.  **Install dependencies**: `npm install`
-3.  **Environment Variables**: Create a `.env` file with the following:
-    ```env
-    GITHUB_TOKEN=<YOUR_GITHUB_PAT_WITH_REPO_SCOPE>
-    GEMINI_API_KEY=<YOUR_GOOGLE_GEMINI_API_KEY>
-    PORT=5000 # Optional, default 5000
-    MONGO_URI=mongodb://localhost:27017/ # Optional, for MongoDB connection
-    MONGO_DB_NAME=docgen # Optional, default db name
+3.  **Configure environment variables**: Create a `.env` file with:
     ```
-4.  **Start the server**: `node server.js`
+    GITHUB_TOKEN=<Your_GitHub_Personal_Access_Token>
+    GEMINI_API_KEY=<Your_Google_Gemini_API_Key>
+    QDRANT_URL=<Your_Qdrant_Cloud_URL_or_local_endpoint>
+    QDRANT_API_KEY=<Your_Qdrant_API_Key>
+    PORT=5000
+    ```
+4.  **Run the application**: `node app.js`
 
 # Deployment
-The application is deployed as a continuously running Node.js service. It needs to be publicly accessible for GitHub to send webhook events. Configure a GitHub webhook in your repository settings pointing to `https://your-app-url/github/webhook` for `push` and `pull_request` events. Ensure environment variables (`GITHUB_TOKEN`, `GEMINI_API_KEY`, `MONGO_URI`) are securely managed in production environments.
+The application is a Node.js server. It requires hosting on a platform that can run Node.js applications and can be publicly exposed to receive GitHub webhook events. A persistent Qdrant instance (cloud-hosted or self-managed) is necessary for vector storage. GitHub webhooks must be configured in the target repositories to point to the deployed server's `/github/webhook` endpoint.
 
 # Major APIs
--   **`POST /github/webhook`**:
-    -   **Purpose**: Receives and processes GitHub webhook events.
-    -   **Triggers**:
-        -   Automatic documentation update upon `push` events to the `main` or `master` branch.
-        -   Automatic documentation update upon `pull_request` events when a PR is `closed` and `merged`.
+-   `POST /github/webhook`: Receives GitHub `push` and `pull_request` events to trigger automated documentation generation.
+-   `POST /api/ingest`: Manually ingests code from a specified directory into the Qdrant vector database.
+-   `POST /api/chat`: Accepts a natural language question and returns an answer based on the semantically retrieved code chunks.
+-   `GET /api/chunks`: Lists a limited number of ingested code chunks.
+-   `GET /api/status`: Provides a health check and indicates if Qdrant is connected.

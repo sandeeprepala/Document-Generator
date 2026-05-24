@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { chunkFile } from "./chunker.js";
 import { generateEmbedding } from "./embedding.js";
 import { generateDocumentation } from "./gemini.js";
@@ -6,6 +7,16 @@ import { ensureQdrantCollection } from "./rag.js";
 // File extensions to process
 const SUPPORTED_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx"];
 const DOCS_FILE = "Readme.md";
+
+/**
+ * Convert an arbitrary string ID to UUID format (8-4-4-4-12)
+ * Uses SHA-256 hash of input and formats first 32 chars as UUID.
+ */
+function toUUID(str) {
+  const hex = crypto.createHash("sha256").update(str).digest("hex");
+  const h = hex.slice(0, 32);
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+}
 
 /**
  * Extracts changed file paths from push webhook payload.
@@ -196,9 +207,10 @@ export async function triggerDocGeneration({
                     const chunk = chunks[i];
                     const embedding = await generateEmbedding(chunk.text);
 
-                    // create deterministic chunkId
-                    const safeFile = item.file.replace(/[^a-z0-9]/gi, "-");
-                    const chunkId = `${safeFile}-${i}`;
+                    // create deterministic chunkId and convert to UUID format
+                    const safeFile = item.file.replace(/[^\.a-z0-9]/gi, "-");
+                    const rawId = `${safeFile}-${i}`;
+                    const chunkId = toUUID(rawId);
 
                     const metadata = extractMetadata(item.file, chunk.text);
 
