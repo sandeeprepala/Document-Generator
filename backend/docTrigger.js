@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { chunkFile } from "./chunker.js";
 import { generateEmbedding } from "./embedding.js";
 import { generateDocumentation } from "./gemini.js";
-import { ensureQdrantCollection } from "./rag.js";
+import { ensureQdrantCollection, deleteChunksForFile } from "./rag.js";
 //comment7
 // File extensions to process
 const SUPPORTED_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx"];
@@ -183,10 +183,24 @@ export async function triggerDocGeneration({
 
         console.log(`[DocGen] Found ${changedFiles.length} changed files`);
 
-        // Filter to only supported files and exclude removals
+        const deletions = changedFiles.filter(
+            (item) => isSupportedFile(item.file) && item.status === "removed"
+        );
         const filesToProcess = changedFiles.filter(
             (item) => isSupportedFile(item.file) && item.status !== "removed"
         );
+
+        if (db) {
+            await ensureQdrantCollection(db);
+            for (const item of deletions) {
+                try {
+                    await deleteChunksForFile(db, item.file);
+                    console.log(`[DocGen] Deleted stale chunks for removed file ${item.file}`);
+                } catch (err) {
+                    console.error(`[DocGen] Failed to delete chunks for removed file ${item.file}:`, err.message);
+                }
+            }
+        }
 
         console.log(`[DocGen] Processing ${filesToProcess.length} supported files`);
 
@@ -203,6 +217,15 @@ export async function triggerDocGeneration({
                 );
                 const chunks = chunkFile(content, item.file);
 
+                if (db) {
+                    try {
+                        await deleteChunksForFile(db, item.file);
+                        console.log(`[DocGen] Deleted stale chunks for updated file ${item.file}`);
+                    } catch (err) {
+                        console.error(`[DocGen] Failed to delete previous chunks for ${item.file}:`, err.message);
+                    }
+                }
+
                 for (let i = 0; i < chunks.length; i++) {
                     const chunk = chunks[i];
                     const embedding = await generateEmbedding(chunk.text);
@@ -214,10 +237,9 @@ export async function triggerDocGeneration({
 
                     const metadata = extractMetadata(item.file, chunk.text);
 
-                    // store chunk in MongoDB if available
+                    // store chunk in Qdrant if available
                     if (db) {
                         try {
-                            await ensureQdrantCollection(db);
                             await db.client.upsert(db.collectionName, {
                                 wait: true,
                                 points: [
@@ -226,7 +248,7 @@ export async function triggerDocGeneration({
                                         vector: embedding,
                                         payload: {
                                             repo,
-                                            file: item.file,
+                                            filePath: item.file,
                                             chunkId,
                                             text: chunk.text,
                                             metadata,

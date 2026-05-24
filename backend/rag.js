@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { chunkFile } from "./chunker.js";
 import { generateEmbedding } from "./embedding.js";
 import { getAllFiles } from "./repoReader.js";
-//comment7
+//comment8
 const VECTOR_COLLECTION = "chunks";
 const SUPPORTED_EXTENSIONS = new Set([
   ".js", ".jsx", ".ts", ".tsx", ".md",
@@ -29,6 +29,25 @@ function isSupportedFile(filePath) {
 function sanitizeSourceRoot(sourceRoot) {
   return path.resolve(sourceRoot || path.resolve(process.cwd(), "../"));
 }
+
+async function deleteChunksForFile(db, relativePath) {
+  if (!db || !db.client || !db.collectionName) {
+    throw new Error("Qdrant database connection is required for chunk deletion.");
+  }
+  const { client, collectionName } = db;
+  await client.delete(collectionName, {
+    wait: true,
+    filter: {
+      must: [
+        {
+          key: "filePath",
+          match: { value: relativePath },
+        },
+      ],
+    },
+  });
+}
+
 
 export async function ingestDirectory({ db, sourceRoot, chunkSize = DEFAULT_CHUNK_SIZE }) {
   if (!db || !db.client || !db.collectionName) {
@@ -57,10 +76,12 @@ export async function ingestDirectory({ db, sourceRoot, chunkSize = DEFAULT_CHUN
   const batch = [];
 
   for (const filePath of files) {
+    const relativeFilePath = path.relative(rootPath, filePath);
+    await deleteChunksForFile(db, relativeFilePath);
     const content = fs.readFileSync(filePath, "utf8");
-    const chunks = chunkFile(content, path.relative(rootPath, filePath), chunkSize);
+    const chunks = chunkFile(content, relativeFilePath, chunkSize);
 
-    console.log(`[Ingest] ${path.relative(rootPath, filePath)} → ${chunks.length} chunks`);
+    console.log(`[Ingest] ${relativeFilePath} → ${chunks.length} chunks`);
 
     for (let index = 0; index < chunks.length; index += 1) {
       const chunk = chunks[index];
@@ -241,7 +262,7 @@ async function ensureQdrantCollection(db) {
   }
 }
 
-export { ensureQdrantCollection };
+export { ensureQdrantCollection, deleteChunksForFile };
 
 function cosineSimilarity(a = [], b = []) {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return 0;
