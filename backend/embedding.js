@@ -1,7 +1,7 @@
 import { pipeline } from "@xenova/transformers";
 
 let extractor;
-//comment812341
+//comment8123412
 export async function loadModel() {
   if (!extractor) {
     extractor = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2");
