@@ -1,50 +1,149 @@
-```markdown
-# Project Overview
-This project focuses on managing and querying vector embeddings, enabling functionalities such as semantic search, data similarity analysis, or AI-powered data retrieval.
+# AI-Powered Documentation & RAG System
 
-**Main technologies used:**
-- **Backend:** JavaScript/TypeScript (Node.js)
-- **Databases:** Vector Database (for embeddings), potentially a traditional database (for metadata)
+An intelligent documentation generation and Retrieval-Augmented Generation (RAG) system built using Node.js and Qdrant Vector Database.
 
-# Core Features
-- Ingestion and indexing of vector embeddings.
-- Semantic search and similarity queries on stored vectors.
-- Retrieval of vector data and associated metadata.
+This project automatically analyzes codebases, generates documentation, stores embeddings in a vector database, and enables semantic search and AI-powered codebase querying.
+
+---
+
+# Features
+
+## Core Features
+
+- Automated documentation generation
+- Semantic code search using vector embeddings
+- AI-powered Retrieval-Augmented Generation (RAG)
+- Incremental README updates
+- Intelligent code chunking and embedding
+- Metadata extraction from source files
+- Real-time codebase ingestion and querying
+
+---
+
+# Tech Stack
+
+## Backend
+- Node.js
+- JavaScript / TypeScript
+- Express.js
+
+## AI & Embeddings
+- Gemini 2.5 Flash
+- Vector Embeddings
+
+## Databases
+- Qdrant Vector Database
+- MongoDB / PostgreSQL (optional for metadata storage)
+
+---
 
 # Architecture
-The system follows a client-server architecture:
-- **Backend:** A Node.js application serves as the API layer, handling business logic, interacting with the vector database for embedding operations, and a traditional database for managing associated metadata.
-- **Frontend (Assumed):** A client application (e.g., web or mobile) consumes the backend APIs to provide user interaction.
 
-# Important Modules
-- **Authentication:** Standard authentication mechanisms (e.g., JWT, OAuth 2.0) are typically used to secure API endpoints.
-- **APIs:** Provides a RESTful interface for all vector-related operations and metadata management.
-- **Database:**
-    - A specialized **vector database** (e.g., Pinecone, Weaviate, Qdrant) is used for efficient storage, indexing, and similarity search of high-dimensional vector embeddings.
-    - A **traditional database** (e.g., PostgreSQL, MongoDB) may be used in conjunction to store metadata associated with each vector.
-- **Real-time systems:** Not explicitly a core component; interactions are primarily via request-response cycles.
+The system follows a client-server architecture.
 
-# Setup
-1.  **Clone the repository:**
-    ```bash
-    git clone <repository-url>
-    cd <repository-name>
-    ```
-2.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
-3.  **Configure environment variables:** Create a `.env` file based on a provided template (e.g., `.env.example`) for database connections and other settings.
-4.  **Start the application:**
-    ```bash
-    npm start
-    ```
+## Backend Responsibilities
 
-# Deployment
-The application is typically containerized using Docker for portability and deployed to cloud platforms (e.g., AWS, GCP, Azure). This leverages managed services for compute (e.g., EC2, Cloud Run), databases, and API gateway for scalability and reliability.
+The backend service:
 
-# Major APIs
--   `POST /vectors`: Ingest a new vector embedding along with its metadata.
--   `GET /vectors/search`: Perform a similarity search against stored vectors using a query vector or text.
--   `GET /vectors/{id}`: Retrieve a specific vector and its associated metadata by ID.
-```
+- Handles API requests
+- Processes and chunks source code
+- Generates embeddings
+- Stores vectors in Qdrant
+- Performs semantic similarity search
+- Generates AI-powered documentation updates
+
+## Vector Database
+
+Qdrant is used for:
+
+- High-dimensional vector storage
+- Similarity search
+- Fast retrieval of relevant code chunks
+- Context generation for RAG workflows
+
+## Frontend (Optional)
+
+A frontend client can consume the APIs to:
+
+- Chat with the codebase
+- Trigger ingestion
+- View generated documentation
+- Monitor indexing status
+
+---
+
+# Project Workflow
+
+1. Source code is ingested
+2. Files are chunked intelligently
+3. Embeddings are generated
+4. Chunks are stored in Qdrant
+5. Semantic search retrieves relevant chunks
+6. Gemini generates contextual responses and documentation
+
+---
+
+# API Endpoints
+
+## Health & Status
+
+### `GET /api/status`
+Checks backend and Qdrant connection health.
+
+---
+
+## Ingestion
+
+### `POST /api/ingest`
+Triggers codebase ingestion into Qdrant.
+
+---
+
+## Chat / RAG
+
+### `POST /api/chat`
+Queries the codebase using Retrieval-Augmented Generation (RAG).
+
+---
+
+## Chunks
+
+### `GET /api/chunks`
+Lists stored chunks in Qdrant.
+
+---
+
+# Supported File Types
+
+The ingestion pipeline currently supports:
+
+- `.js`
+- `.jsx`
+- `.ts`
+- `.tsx`
+- `.json`
+- `.md`
+- `.txt`
+- `.html`
+- `.css`
+
+---
+
+# Automated Documentation System
+
+The documentation system automatically updates project documentation based on repository changes.
+
+## Supported Events
+
+Documentation updates are triggered on:
+
+- `push` events to `main` or `master`
+- merged pull requests
+
+## Incremental README Updates
+
+Instead of regenerating the entire README, only the section between:
+
+```md
+<!-- AUTO-GENERATED DOCS START -->
+<!-- AUTO-GENERATED DOCS END -->
