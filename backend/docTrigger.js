@@ -282,8 +282,10 @@ export async function triggerDocGeneration({
     );
     console.log("[DocGen] Documentation generated successfully");
 
+    const docsWithSummary = `${docs.trim()}${buildChangeSummary(changedFiles)}`;
+
     // ── STEP 6: Push README.md back to the repo ─────────────────────────────
-    await pushDocsToRepo({ repoFullName, octokit, docs, existingReadme });
+    await pushDocsToRepo({ repoFullName, octokit, docs: docsWithSummary, existingReadme });
 
     console.log("[DocGen] Done ✓");
   } catch (err) {
@@ -292,17 +294,41 @@ export async function triggerDocGeneration({
   }
 }
 
+function buildChangeSummary(changedFiles) {
+  if (!changedFiles || changedFiles.length === 0) {
+    return "";
+  }
+
+  const lines = changedFiles.map((item) => {
+    const status = item.status === "removed" ? "removed" : item.status === "added" ? "added" : "modified";
+    return `- ${item.file} (${status})`;
+  });
+
+  return `\n\n## Change Summary\nThe following files were changed or updated in the codebase:\n${lines.join("\n")}\n`;
+}
+
 function mergeDocsIntoReadme(existingReadme, generatedDocs) {
-    const startMarker = "<!-- AUTO-GENERATED DOCS START -->";
-    const endMarker = "<!-- AUTO-GENERATED DOCS END -->";
-    const generatedBlock = `${startMarker}\n${generatedDocs.trim()}\n${endMarker}`;
+  const startMarker = "<!-- AUTO-GENERATED DOCS START -->";
+  const endMarker = "<!-- AUTO-GENERATED DOCS END -->";
+  const generatedBlock = `${startMarker}\n${generatedDocs.trim()}\n${endMarker}`;
 
-    if (existingReadme.includes(startMarker) && existingReadme.includes(endMarker)) {
-        const sectionRegex = new RegExp(`${startMarker}[\s\S]*?${endMarker}`, "m");
-        return existingReadme.replace(sectionRegex, generatedBlock);
+  if (existingReadme.includes(startMarker) && existingReadme.includes(endMarker)) {
+    // Fix: use [\\s\\S] so the backslash survives string parsing
+    const sectionRegex = new RegExp(
+      `<!-- AUTO-GENERATED DOCS START -->[\\s\\S]*?<!-- AUTO-GENERATED DOCS END -->`,
+      "m"
+    );
+    const updated = existingReadme.replace(sectionRegex, generatedBlock);
+    if (updated === existingReadme) {
+      // Regex still didn't match — fallback: append fresh block
+      console.warn("[DocGen] Regex replace had no effect — appending generated docs instead.");
+      return `${existingReadme.trim()}\n\n${generatedBlock}\n`;
     }
+    return updated;
+  }
 
-    return `${existingReadme.trim()}\n\n${generatedBlock}\n`;
+  // First time — no markers exist yet, append to end
+  return `${existingReadme.trim()}\n\n${generatedBlock}\n`;
 }
 
 /**
