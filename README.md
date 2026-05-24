@@ -146,14 +146,30 @@ Instead of regenerating the entire README, only the section between:
 
 ```md
 <!-- AUTO-GENERATED DOCS START -->
-### Documentation & RAG System Enhancements
+## Documentation & RAG System Updates
 
-This update brings significant improvements to how project documentation is generated and managed, alongside a more robust Retrieval-Augmented Generation (RAG) backend.
+This update introduces significant enhancements to the project's automatic documentation generation, RAG (Retrieval-Augmented Generation) capabilities, and interaction with the Qdrant vector database.
 
-#### Key Changes:
+### Key Changes:
 
-*   **Intelligent `README.md` Updates**
-    *   The documentation generation pipeline (`backend/docTrigger.js`) now intelligently updates the project's `README.md` by merging new auto-generated content into existing files. It uses special markers (`<!-- AUTO-GENERATED DOCS START -->` and `<!-- AUTO-GENERATED DOCS END -->`) to update only the designated section, preserving any manual edits outside this block.
+*   **Intelligent README Updates**: The documentation generation pipeline now intelligently updates the `README.md` by targeting a specific auto-generated section (delimited by `<!-- AUTO-GENERATED DOCS START/END -->` markers). This prevents overwriting custom sections of your README. If markers are not present, it gracefully appends the new section.
+*   **Change Summary**: Automatically appends a concise "Change Summary" to the generated documentation, listing files that were added, modified, or removed in the recent push or pull request, providing immediate context.
+*   **Code Metadata Extraction**: A new `extractMetadata` function attempts to identify programming language and function names within code chunks. This enriches the context stored for each chunk, improving the quality of generated documentation and future RAG queries.
+*   **Robust Chunk Deletion**: The `deleteChunksForFile` function has been significantly improved for Qdrant. It now reliably removes all stale chunks associated with a deleted or modified file by using a scroll-based approach to find all matching points, including resilient batch deletion with a point-by-point fallback for increased reliability.
+*   **Consistent Chunk IDs**: Chunk IDs stored in Qdrant are now generated as stable, UUID-formatted identifiers using SHA-256 hashes of the file path and chunk index. This ensures data integrity and idempotency during updates.
+*   **Expanded File Support**: The RAG system now supports a broader range of file types for ingestion, including `.md`, `.txt`, `.json`, `.html`, and `.css`, in addition to JavaScript/TypeScript files.
+*   **Model Optimization**: The documentation and answer generation now utilize the `gemini-2.5-flash` model, which may offer improved performance and cost-efficiency.
+*   **GitHub Integration Refinements**:
+    *   The documentation generation process explicitly ignores `README.md` as a source file to prevent infinite loops.
+    *   Documentation updates pushed to the repository now include `[skip ci]` in their commit messages to avoid unnecessary CI/CD pipeline triggers.
+
+## Change Summary
+The following files were changed or updated in the codebase:
+- backend/chunker.js (modified)
+- backend/docTrigger.js (modified)
+- backend/gemini.js (modified)
+- backend/rag.js (modified)
+<!-- AUTO-GENERATED DOCS END -->`) to update only the designated section, preserving any manual edits outside this block.
     *   Includes a fallback to create a new `README.md` if one doesn't exist.
     *   A concise **"Change Summary"** section listing all added, modified, or removed files is now automatically appended to the generated documentation, providing immediate context for updates.
 *   **Enhanced Code Analysis**
