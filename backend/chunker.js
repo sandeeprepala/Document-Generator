@@ -6,7 +6,7 @@
  * @param {number} chunkSize - Size of each chunk in characters
  * @returns {Array} Array of {file, text} objects
  */
-//comment812
+//comment8123
 export function chunkFile(text = "", fileName, chunkSize = 1000) {
   const chunks = [];
   const normalizedText = String(text);

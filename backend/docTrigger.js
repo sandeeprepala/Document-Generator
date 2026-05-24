@@ -157,161 +157,139 @@ function extractMetadata(filePath, text) {
 }
 
 export async function triggerDocGeneration({
-    repoFullName,
-    octokit,
-    db,
-    eventType,
-    commits,
-    prNumber,
+  repoFullName,
+  octokit,
+  db,
+  eventType,
+  commits,
+  prNumber,
 }) {
-    console.log("\n[DocGen] Starting documentation generation...");
-    console.log("[DocGen] Repo:", repoFullName);
-    console.log("[DocGen] Event type:", eventType);
+  console.log("\n[DocGen] Starting documentation generation...");
+  console.log("[DocGen] Repo:", repoFullName);
+  console.log("[DocGen] Event type:", eventType);
 
-    const [owner, repo] = repoFullName.split("/");
+  const [owner, repo] = repoFullName.split("/");
 
-    try {
-        // ── STEP 1: Get list of changed files ────────────────────────────────
-        let changedFiles;
-        if (eventType === "push" && commits) {
-            changedFiles = getChangedFilesFromPush(commits);
-        } else if (eventType === "pull_request" && prNumber) {
-            changedFiles = await getPRChangedFiles(owner, repo, prNumber, octokit);
-        } else {
-            throw new Error("Invalid event type or missing data");
-        }
-
-        console.log(`[DocGen] Found ${changedFiles.length} changed files`);
-
-        const deletions = changedFiles.filter(
-            (item) => isSupportedFile(item.file) && item.status === "removed"
-        );
-        const filesToProcess = changedFiles.filter(
-            (item) => isSupportedFile(item.file) && item.status !== "removed"
-        );
-
-        if (db) {
-            await ensureQdrantCollection(db);
-            for (const item of deletions) {
-                try {
-                    await deleteChunksForFile(db, item.file);
-                    console.log(`[DocGen] Deleted stale chunks for removed file ${item.file}`);
-                } catch (err) {
-                    console.error(`[DocGen] Failed to delete chunks for removed file ${item.file}:`, err.message);
-                }
-            }
-        }
-
-        console.log(`[DocGen] Processing ${filesToProcess.length} supported files`);
-
-        let existingReadme = "";
-        try {
-            existingReadme = await fetchFileContent(owner, repo, "README.md", octokit);
-            console.log("[DocGen] Fetched existing README.md for incremental update.");
-        } catch (err) {
-            if (err.status === 404) {
-                console.log("[DocGen] No existing README.md found; creating a new one.");
-            } else {
-                throw err;
-            }
-        }
-
-        // ── STEP 2: Fetch file content in memory and chunk ────────────────────
-        const allChunks = [];
-
-        for (const item of filesToProcess) {
-            try {
-                const content = await fetchFileContent(
-                    owner,
-                    repo,
-                    item.file,
-                    octokit
-                );
-                const chunks = chunkFile(content, item.file);
-
-                if (db) {
-                    try {
-                        await deleteChunksForFile(db, item.file);
-                        console.log(`[DocGen] Deleted stale chunks for updated file ${item.file}`);
-                    } catch (err) {
-                        console.error(`[DocGen] Failed to delete previous chunks for ${item.file}:`, err.message);
-                    }
-                }
-
-                for (let i = 0; i < chunks.length; i++) {
-                    const chunk = chunks[i];
-                    const embedding = await generateEmbedding(chunk.text);
-
-                    // create deterministic chunkId and convert to UUID format
-                    const safeFile = item.file.replace(/[^\.a-z0-9]/gi, "-");
-                    const rawId = `${safeFile}-${i}`;
-                    const chunkId = toUUID(rawId);
-
-                    const metadata = extractMetadata(item.file, chunk.text);
-
-                    // store chunk in Qdrant if available
-                    if (db) {
-                        try {
-                            await db.client.upsert(db.collectionName, {
-                                wait: true,
-                                points: [
-                                    {
-                                        id: chunkId,
-                                        vector: embedding,
-                                        payload: {
-                                            repo,
-                                            filePath: item.file,
-                                            chunkId,
-                                            text: chunk.text,
-                                            metadata,
-                                        },
-                                    },
-                                ],
-                            });
-                        } catch (dbErr) {
-                            console.error(`[DocGen] Failed to upsert chunk ${chunkId}:`, dbErr.message);
-                        }
-                    }
-
-                    allChunks.push({
-                        file: chunk.file,
-                        text: chunk.text,
-                        embedding,
-                    });
-                    console.log(`[DocGen] Embedded: ${chunk.file}`);
-                }
-            } catch (err) {
-                console.error(
-                    `[DocGen] Error processing ${item.file}:`,
-                    err.message
-                );
-                // Continue processing other files
-            }
-        }
-
-        if (allChunks.length === 0) {
-            console.log("[DocGen] No chunks generated, skipping documentation");
-            return;
-        }
-
-        // ── STEP 3: Build combined context ──────────────────────────────────
-        const combinedContext = allChunks.map((item) => item.text).join("\n");
-
-        // ── STEP 4: Generate documentation via Gemini ───────────────────────
-        const docs = await generateDocumentation(
-            combinedContext,
-            filesToProcess.map((item) => item.file)
-        );
-        console.log("[DocGen] Documentation generated successfully");
-
-        // ── STEP 5: Push README.md back to the repo ────────────────────────
-        await pushDocsToRepo({ repoFullName, octokit, docs, existingReadme });
-
-        console.log("[DocGen] Done ✓");
-    } catch (err) {
-        console.error("[DocGen] Pipeline failed:", err.message);
-        throw err;
+  try {
+    // ── STEP 1: Get list of changed files ──────────────────────────────────
+    let changedFiles;
+    if (eventType === "push" && commits) {
+      changedFiles = getChangedFilesFromPush(commits);
+    } else if (eventType === "pull_request" && prNumber) {
+      changedFiles = await getPRChangedFiles(owner, repo, prNumber, octokit);
+    } else {
+      throw new Error("Invalid event type or missing data");
     }
+
+    console.log(`[DocGen] Found ${changedFiles.length} changed files`);
+
+    const deletions = changedFiles.filter(
+      (item) => isSupportedFile(item.file) && item.status === "removed"
+    );
+    const filesToProcess = changedFiles.filter(
+      (item) => isSupportedFile(item.file) && item.status !== "removed"
+    );
+
+    // ── STEP 2: Delete chunks for removed files ─────────────────────────────
+    if (db) {
+      await ensureQdrantCollection(db);
+
+      for (const item of deletions) {
+        try {
+          await deleteChunksForFile(db, item.file);
+          console.log(`[DocGen] Deleted stale chunks for removed file: ${item.file}`);
+        } catch (err) {
+          console.error(`[DocGen] Failed to delete chunks for removed file ${item.file}:`, err.message);
+        }
+      }
+    }
+
+    console.log(`[DocGen] Processing ${filesToProcess.length} supported files`);
+
+    let existingReadme = "";
+    try {
+      existingReadme = await fetchFileContent(owner, repo, "README.md", octokit);
+      console.log("[DocGen] Fetched existing README.md for incremental update.");
+    } catch (err) {
+      if (err.status === 404) {
+        console.log("[DocGen] No existing README.md found; creating a new one.");
+      } else {
+        throw err;
+      }
+    }
+
+    // ── STEP 3: Fetch, delete old chunks, embed and upsert new chunks ───────
+    const allChunks = [];
+
+    for (const item of filesToProcess) {
+      try {
+        const content = await fetchFileContent(owner, repo, item.file, octokit);
+        const chunks = chunkFile(content, item.file);
+
+        // Delete stale chunks using the scroll-based delete (no filter bad request)
+        if (db) {
+          await deleteChunksForFile(db, item.file);
+          console.log(`[DocGen] Deleted stale chunks for: ${item.file}`);
+        }
+
+        // Embed and upsert fresh chunks
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
+          const embedding = await generateEmbedding(chunk.text);
+          const safeFile = item.file.replace(/[^\.a-z0-9]/gi, "-");
+          const chunkId = toUUID(`${safeFile}-${i}`);
+          const metadata = extractMetadata(item.file, chunk.text);
+
+          if (db) {
+            await db.client.upsert(db.collectionName, {
+              wait: true,
+              points: [
+                {
+                  id: chunkId,
+                  vector: embedding,
+                  payload: {
+                    repo,
+                    filePath: item.file,   // stored as "backend/rag.js" — forward slash
+                    chunkId,
+                    text: chunk.text,
+                    metadata,
+                  },
+                },
+              ],
+            });
+          }
+
+          allChunks.push({ file: chunk.file, text: chunk.text, embedding });
+          console.log(`[DocGen] Embedded chunk ${i + 1}/${chunks.length}: ${item.file}`);
+        }
+      } catch (err) {
+        console.error(`[DocGen] Error processing ${item.file}:`, err.message);
+      }
+    }
+
+    if (allChunks.length === 0) {
+      console.log("[DocGen] No chunks generated, skipping documentation");
+      return;
+    }
+
+    // ── STEP 4: Build combined context ──────────────────────────────────────
+    const combinedContext = allChunks.map((item) => item.text).join("\n");
+
+    // ── STEP 5: Generate documentation via Gemini ───────────────────────────
+    const docs = await generateDocumentation(
+      combinedContext,
+      filesToProcess.map((item) => item.file)
+    );
+    console.log("[DocGen] Documentation generated successfully");
+
+    // ── STEP 6: Push README.md back to the repo ─────────────────────────────
+    await pushDocsToRepo({ repoFullName, octokit, docs, existingReadme });
+
+    console.log("[DocGen] Done ✓");
+  } catch (err) {
+    console.error("[DocGen] Pipeline failed:", err.message);
+    throw err;
+  }
 }
 
 function mergeDocsIntoReadme(existingReadme, generatedDocs) {
