@@ -146,14 +146,39 @@ Instead of regenerating the entire README, only the section between:
 
 ```md
 <!-- AUTO-GENERATED DOCS START -->
-### Documentation Generation & Vector Database Enhancements
+## Recent Documentation Engine Updates
 
-This update significantly enhances the project's automated documentation generation pipeline and its integration with the Qdrant vector database. The primary goals are to provide more intelligent, incremental, and robust documentation updates, alongside improved data management for code knowledge.
+This section details recent enhancements to the automated documentation generation and knowledge base system.
 
-#### Key Changes:
+### Key Enhancements
 
-*   **Intelligent README Update Mechanism:**
-    *   The system now performs **incremental updates** to the `README.md` by identifying specific `<!-- AUTO-GENERATED DOCS START -->` and `<!-- AUTO-GENERATED DOCS END -->` markers. If these markers are present, only the content between them is updated.
+*   **Intelligent README Updates:**
+    *   The documentation pipeline now performs incremental updates to `README.md`. It identifies and replaces content within `<!-- AUTO-GENERATED DOCS START -->` and `<!-- AUTO-GENERATED DOCS END -->` markers, preserving any manually written sections.
+    *   A "Change Summary" section is automatically appended to the generated documentation, listing the files that triggered the update.
+*   **Enhanced Triggering for Documentation Generation:**
+    *   Documentation updates are now triggered on both `push` events to `main`/`master` branches and when `pull_requests` are *merged*.
+    *   The system intelligently filters changed files, processing only supported source code files (`.js`, `.jsx`, `.ts`, `.tsx`) and removing chunks for deleted files.
+*   **Improved Vector Database (Qdrant) Integration:**
+    *   Qdrant connection and configuration in `backend/index.js` is more flexible, supporting multiple environment variable names for URL and API keys.
+    *   The system now actively manages source code chunks in Qdrant: old chunks are deleted for modified files before new ones are upserted. Chunks for removed files are also purged.
+    *   The `/api/chat` endpoint includes a fallback mechanism to automatically re-ingest the repository if a query yields no relevant document chunks.
+*   **AI Model Upgrade:**
+    *   The generative AI model used for documentation generation and chat responses has been updated from `gemini-pro` to **`gemini-2.5-flash`** (in `backend/gemini.js`) for potentially faster and more efficient processing.
+*   **Code Metadata Extraction:**
+    *   The system now attempts to extract basic metadata (like language, function type, and function name) from code chunks (in `backend/docTrigger.js`). This metadata is stored with the chunks in the vector database, enabling potentially richer search and retrieval in the future.
+*   **Robust Chunk Identification:**
+    *   A `toUUID` helper function (in `backend/docTrigger.js`) ensures stable, unique identifiers for each code chunk stored in the vector database, improving chunk management and deduplication.
+
+## Change Summary
+The following files were changed or updated in the codebase:
+- backend/chunker.js (modified)
+- backend/docTrigger.js (modified)
+- backend/embedding.js (modified)
+- backend/gemini.js (modified)
+- backend/index.js (modified)
+- backend/repoReader.js (modified)
+- backend/vector.js (modified)
+<!-- AUTO-GENERATED DOCS END -->` markers. If these markers are present, only the content between them is updated.
     *   If no `README.md` or markers are found, the system can now gracefully create a new README or append the generated documentation.
     *   Auto-generated README updates now include `[skip ci]` in the commit message to prevent infinite CI loops.
 *   **Contextual Change Summaries:**
